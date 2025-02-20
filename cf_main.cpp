@@ -35,20 +35,26 @@ int main(int argc, char *argv[])
     printf("\e[1;34m  └───────────────┘\e[0m\n");
 
 
-    if (vars.charge < 2)
-	cf_fitter(project_path, ifile, opath, &vars);
-    else if (vars.charge == BOTH)
-	cf_combined_fitter(project_path, ipath, opath, ifile_pp, ifile_aa, &vars);
-    else if (vars.charge > 2 && vars.charge < 4)
+    if (vars.system == PP)
     {
-	ifile = "/tank1/ge34zez/input/pl_241129/analysis_pl.root";
-	cf_fitter_pl(project_path, ifile, opath, &vars);
+	if (vars.charge < BOTH)
+	    cf_fitter(project_path, ifile, opath, &vars);
+	else if (vars.charge == BOTH)
+	    cf_combined_fitter(project_path, ipath, opath, ifile_pp, ifile_aa, &vars);
     }
-    else if (vars.charge == BOTHPL)
+    else if (vars.system = PL)
     {
-	ifile_pp = "/tank1/ge34zez/input/pl_241129/analysis_pl.root";
-	ifile_aa = "/tank1/ge34zez/input/pl_241129/analysis_pl.root";
-	cf_combined_fitter_pl(project_path, opath, ifile_pp, ifile_aa, &vars);
+	if (vars.charge < BOTH)
+	{
+	    ifile = "/tank1/ge34zez/input/pl_241129/analysis_pl.root";
+	    cf_fitter_pl(project_path, ifile, opath, &vars);
+	}
+	else if (vars.charge == BOTH)
+	{
+	    ifile_pp = "/tank1/ge34zez/input/pl_241129/analysis_pl.root";
+	    ifile_aa = "/tank1/ge34zez/input/pl_241129/analysis_pl.root";
+	    cf_combined_fitter_pl(project_path, opath, ifile_pp, ifile_aa, &vars);
+	}
     }
 
     printf("  \e[1;36m-->  \e[0;36mFitter finished!  \e[1;36m<--\e[0m\n\n");

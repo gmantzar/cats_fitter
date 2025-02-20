@@ -1,36 +1,52 @@
 #ifndef CF_FITTER_H
 #define CF_FITTER_H
-
 #include <map>
+#include <iostream>
 
 #include "TString.h"
 #include "TH1F.h"
 #include "TRandom3.h"
 
-#define BINS(X) ((FEMTO_RANGE[X][1] - FEMTO_RANGE[X][0]) / 8.)
+#define BINS(X, Y) ((X[Y][1] - X[Y][0]) / 8.)
 
+enum SYSTEM { PL = 1, };
+enum PARTICLES { PROTON = 0, LAMBDA };
 enum FITTER_TYPE { FIT_CATS = 0, FIT_RSM, FIT_BOTH };
-enum CHARGE_TYPE { PP = 0, APAP, BOTH, PL, APAL, BOTHPL };
+enum CHARGE_TYPE { PP = 0, APAP, BOTH };
+enum EPOS { PR = 0, RP, RR };
 
-static double RSM_FRAC[3] = {0.6422, 0.90*RSM_FRAC[0], 1.10*RSM_FRAC[0]};
-static double RSM_MASS[3] = {  1362, 0.90*RSM_MASS[0], 1.10*RSM_MASS[0]};
-static double RSM_TAU[3]  = {  1.65, 0.90*RSM_TAU[0],  1.10*RSM_TAU[0]};
+static double RSM_FRAC_PP[3] = {0.6422, 0.90*RSM_FRAC_PP[0], 1.10*RSM_FRAC_PP[0]};
+static double RSM_MASS_PP[3] = {  1362, 0.90*RSM_MASS_PP[0], 1.10*RSM_MASS_PP[0]};
+static double RSM_TAU_PP[3]  = {  1.65, 0.90*RSM_TAU_PP[0],  1.10*RSM_TAU_PP[0]};
 
-static const TString CHARGE_STR[] = {"pp", "apap", "combined", "pl", "apal", "combined"};
+static double RSM_FRAC_PL[3] = {0.6438, 0.90*RSM_FRAC_PL[0], 1.10*RSM_FRAC_PL[0]};
+static double RSM_MASS_PL[3] = {  1462, 0.90*RSM_MASS_PL[0], 1.10*RSM_MASS_PL[0]};
+static double RSM_TAU_PL[3]  = {  4.69, 0.90*RSM_TAU_PL[0],  1.10*RSM_TAU_PL[0]};
+
+static double *RSM_FRAC[] = {RSM_FRAC_PP, RSM_FRAC_PL};
+static double *RSM_MASS[] = {RSM_MASS_PP, RSM_MASS_PL};
+static double *RSM_TAU[] = {RSM_TAU_PP, RSM_TAU_PL};
+
+static const TString SYSTEM_STR[] = {"PP", "PL"};
+static const TString CHARGE_STR[] = {"pp", "apap", "combined"};
+
+static const int fmr_ent = 3;
 
 static double
-FEMTO_RANGE[][3] = {
-    {0, 280, BINS(0)},
-    {0, 240, BINS(1)},
-    {0, 320, BINS(2)},
+FEMTO_RANGE_PP[fmr_ent][3] = {
+    {0, 280, BINS(FEMTO_RANGE_PP, 0)},
+    {0, 240, BINS(FEMTO_RANGE_PP, 1)},
+    {0, 320, BINS(FEMTO_RANGE_PP, 2)},
 };
 
 static double
-FEMTO_RANGE_PL[][3] = {
-    {0, 400, BINS(0)},
-    {0, 360, BINS(1)},
-    {0, 440, BINS(2)},
+FEMTO_RANGE_PL[fmr_ent][3] = {
+    {0, 400, BINS(FEMTO_RANGE_PL, 0)},
+    {0, 360, BINS(FEMTO_RANGE_PL, 1)},
+    {0, 440, BINS(FEMTO_RANGE_PL, 2)},
 };
+
+static double (*FEMTO_RANGE[])[fmr_ent][3] = {&FEMTO_RANGE_PP, &FEMTO_RANGE_PL};
 
 static double
 FIT_RANGE[][3] = {
@@ -84,12 +100,13 @@ VAR {
 inline void
 set_vars(int argc, char *argv[], VAR *var)
 {
-    if (argc > 3) var->charge = atoi(argv[3]);
-    if (argc > 4) var->sample = atoi(argv[4]);
-    if (argc > 5) var->stat   = atoi(argv[5]);
-    if (argc > 6) var->rsm    = atoi(argv[6]);
-    if (argc > 7) var->mt     = atoi(argv[7]);
-    if (argc > 8) var->mult   = atoi(argv[8]);
+    if (argc > 3) var->system = atoi(argv[3]);
+    if (argc > 4) var->charge = atoi(argv[4]);
+    if (argc > 5) var->sample = atoi(argv[5]);
+    if (argc > 6) var->stat   = atoi(argv[6]);
+    if (argc > 7) var->rsm    = atoi(argv[7]);
+    if (argc > 8) var->mt     = atoi(argv[8]);
+    if (argc > 9) var->mult   = atoi(argv[9]);
 
     if (!var->stat)
     {
@@ -107,13 +124,13 @@ set_vars(int argc, char *argv[], VAR *var)
 	    var->mass  = random->Integer(3);
 	}
 
-	if (argc >  9) var->lam   = atoi(argv[9]);
-	if (argc > 10) var->fmr   = atoi(argv[10]);
-	if (argc > 11) var->fr    = atoi(argv[11]);
-	if (argc > 12) var->bsl   = atoi(argv[12]);
-	if (argc > 13) var->smear = atoi(argv[13]);
-	if (argc > 14) var->frac  = atoi(argv[14]);
-	if (argc > 15) var->mass  = atoi(argv[15]);
+	if (argc > 10) var->lam   = atoi(argv[10]);
+	if (argc > 11) var->fmr   = atoi(argv[11]);
+	if (argc > 12) var->fr    = atoi(argv[12]);
+	if (argc > 13) var->bsl   = atoi(argv[13]);
+	if (argc > 14) var->smear = atoi(argv[14]);
+	if (argc > 15) var->frac  = atoi(argv[15]);
+	if (argc > 16) var->mass  = atoi(argv[16]);
     }
 }
 
@@ -153,24 +170,17 @@ VAR_QA {
 typedef struct
 VAR_FMR {
     double Min, Max, Bins;
-    VAR_FMR() : Min(FEMTO_RANGE[0][0]), Max(FEMTO_RANGE[0][1]), Bins(FEMTO_RANGE[0][2]) {}
-    VAR_FMR(int fmr) :
-	Min(FEMTO_RANGE[fmr][0]),
-	Max(FEMTO_RANGE[fmr][1]),
-	Bins(FEMTO_RANGE[fmr][2])
+    VAR_FMR(int system) :
+	Min((*FEMTO_RANGE[system])[0][0]),
+	Max((*FEMTO_RANGE[system])[0][1] ),
+	Bins((*FEMTO_RANGE[system])[0][2])
+    {}
+    VAR_FMR(int system, int fmr) :
+	Min((*FEMTO_RANGE[system])[fmr][0]),
+	Max((*FEMTO_RANGE[system])[fmr][1]),
+	Bins((*FEMTO_RANGE[system])[fmr][2])
     {}
 } VAR_FMR;
-
-typedef struct
-VAR_FMR_PL {
-    double Min, Max, Bins;
-    VAR_FMR_PL() : Min(FEMTO_RANGE_PL[0][0]), Max(FEMTO_RANGE_PL[0][1]), Bins(FEMTO_RANGE_PL[0][2]) {}
-    VAR_FMR_PL(int fmr) :
-	Min(FEMTO_RANGE_PL[fmr][0]),
-	Max(FEMTO_RANGE_PL[fmr][1]),
-	Bins(FEMTO_RANGE_PL[fmr][2])
-    {}
-} VAR_FMR_PL;
 
 typedef struct
 VAR_FR {
@@ -181,9 +191,17 @@ VAR_FR {
 
 typedef struct
 VAR_RSM {
-    double frac, mass, tau;
-    VAR_RSM() : frac(RSM_FRAC[0]), mass(RSM_MASS[0]), tau(RSM_TAU[0]) {}
-    VAR_RSM(int rsm) : frac(RSM_FRAC[rsm]), mass(RSM_MASS[rsm]), tau(RSM_TAU[0]) {}
+    double frac, frac2;
+    double mass, mass2;
+    double tau, tau2;
+    VAR_RSM(int particle1, int particle2) :
+	frac(RSM_FRAC[particle1][0]), mass(RSM_MASS[particle1][0]), tau(RSM_TAU[particle1][0]),
+	frac2(RSM_FRAC[particle2][0]), mass2(RSM_MASS[particle2][0]), tau2(RSM_TAU[particle2][0])
+    {}
+    VAR_RSM(int particle1, int particle2, int rsm) :
+	frac(RSM_FRAC[particle1][rsm]), mass(RSM_MASS[particle1][rsm]), tau(RSM_TAU[particle1][0]),
+	frac2(RSM_FRAC[particle2][rsm]), mass2(RSM_MASS[particle2][rsm]), tau2(RSM_TAU[particle2][0])
+    {}
 } VAR_RSM;
 
 void cf_fitter(TString, TString, TString, VAR*);
