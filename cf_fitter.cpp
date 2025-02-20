@@ -228,58 +228,88 @@ void print_info_2(VAR *var, VAR_FMR *fmr, VAR_FR *fr)
     printf("\e[1;34m  └───────────────┘\e[0m\n\n");
 }
 
-void get_klambda_histos(TString filename, VAR *var, DLM_Histo<double> *lambda_pars[])
-{
-    // k* dependent λ parameters
-    TString klambda_filename = filename;
-    auto file = std::make_unique<TFile>(klambda_filename, "read");
-    auto lambdas = std::make_unique<TDirectory*[]>(5);
-    lambdas[0] = (TDirectory*) file->GetDirectory("genuine");
-    lambdas[1] = (TDirectory*) file->GetDirectory("FD_lambda");
-    lambdas[2] = (TDirectory*) file->GetDirectory("FD_sigma");
-    lambdas[3] = (TDirectory*) file->GetDirectory("flat");
-    lambdas[4] = (TDirectory*) file->GetDirectory("fake");
-
-    double scale = 0.1;
-    for (size_t nlam = 0; nlam < 5; ++nlam)
-    {
-	TString name = Form("Mult_%i/Mt_%i/Lambda", var->mult, var->mt - 1);
-	auto th1_klambda = (TH1F*) lambdas[nlam]->Get(name);
-	th1_klambda->SetDirectory(0);
-
-	if	(var->lam == 1) th1_klambda->Scale(1. - scale);
-	else if (var->lam == 2) th1_klambda->Scale(1. + scale);
-
-	lambda_pars[nlam] = Convert_TH1F_DoubleDlmHisto(th1_klambda);
-    }
-    file->Close();
-}
-
 void get_klambda_histos(TString filename, VAR *var, TH1F *lambda_pars[])
 {
     // k* dependent λ parameters
     TString klambda_filename = filename;
     auto file = std::make_unique<TFile>(klambda_filename, "read");
     auto lambdas = std::make_unique<TDirectory*[]>(5);
-    lambdas[0] = (TDirectory*) file->GetDirectory("genuine");
-    lambdas[1] = (TDirectory*) file->GetDirectory("FD_lambda");
-    lambdas[2] = (TDirectory*) file->GetDirectory("FD_sigma");
-    lambdas[3] = (TDirectory*) file->GetDirectory("flat");
-    lambdas[4] = (TDirectory*) file->GetDirectory("fake");
+    auto lambdas_th1 = std::make_unique<TH1F*[]>(5);
+    lambdas[0] = static_cast<TDirectory*>(file->GetDirectory("genuine"));
+    lambdas[1] = static_cast<TDirectory*>(file->GetDirectory("FD_lambda"));
+    lambdas[2] = static_cast<TDirectory*>(file->GetDirectory("FD_sigma"));
+    lambdas[3] = static_cast<TDirectory*>(file->GetDirectory("flat"));
+    lambdas[4] = static_cast<TDirectory*>(file->GetDirectory("fake"));
 
-    double scale = 0.1;
+    lambdas[1]->SetName("lambda");
+    lambdas[2]->SetName("sigma");
+
     for (size_t nlam = 0; nlam < 5; ++nlam)
     {
 	TString name = Form("Mult_%i/Mt_%i/Lambda", var->mult, var->mt - 1);
-	auto th1_klambda = (TH1F*) lambdas[nlam]->Get(name);
-	th1_klambda->SetDirectory(0);
-
-	if	(var->lam == 1) th1_klambda->Scale(1. - scale);
-	else if (var->lam == 2) th1_klambda->Scale(1. + scale);
-
-	lambda_pars[nlam] = th1_klambda;
+	lambdas_th1[nlam] = static_cast<TH1F*>(lambdas[nlam]->Get(name));
+	lambdas_th1[nlam]->SetName(lambdas[nlam]->GetName());
+	lambdas_th1[nlam]->SetDirectory(0);
     }
+
+    double scale = 0.1;
+    double total_gen_var = 0;
+    double scale_non_gen = 0;
+    double content = 0;
+
+    for (int nbin = 1; nbin < lambdas_th1[0]->GetNbinsX() + 1; ++nbin)
+    {
+	total_gen_var = lambdas_th1[0]->GetBinContent(nbin) * scale;
+	scale_non_gen = total_gen_var / (lambdas_th1[1]->GetBinContent(nbin) + lambdas_th1[2]->GetBinContent(nbin)
+		    + lambdas_th1[3]->GetBinContent(nbin) + lambdas_th1[4]->GetBinContent(nbin));
+
+	for (size_t nlam = 0; nlam < 5; ++nlam)
+	{
+	    if (nlam == 0)
+	    {
+		if  (var->lam == 1)
+		{
+		    content = lambdas_th1[nlam]->GetBinContent(nbin) * (1. - scale);
+		    lambdas_th1[nlam]->SetBinContent(nbin, content);
+		}
+		else if (var->lam == 2)
+		{
+		    content = lambdas_th1[nlam]->GetBinContent(nbin) * (1. + scale);
+		    lambdas_th1[nlam]->SetBinContent(nbin, content);
+		}
+	    }
+	    else
+	    {
+		if  (var->lam == 1)
+		{
+		    content = lambdas_th1[nlam]->GetBinContent(nbin) * (1. + scale_non_gen);
+		    lambdas_th1[nlam]->SetBinContent(nbin, content);
+		}
+		else if (var->lam == 2)
+		{
+		    content = lambdas_th1[nlam]->GetBinContent(nbin) * (1. - scale_non_gen);
+		    lambdas_th1[nlam]->SetBinContent(nbin, content);
+		}
+	    }
+	}
+    }
+
+    for (size_t nlam = 0; nlam < 5; ++nlam)
+    {
+	lambda_pars[nlam] = static_cast<TH1F*>(lambdas_th1[nlam]->Clone());
+	lambda_pars[nlam]->SetDirectory(0);
+    }
+
     file->Close();
+}
+
+void get_klambda_histos(TString filename, VAR *var, DLM_Histo<double> *lambda_pars[])
+{
+    auto lambdas_th1 = std::make_unique<TH1F*[]>(5);
+    get_klambda_histos(filename, var, lambdas_th1.get());
+
+    for (size_t nlam = 0; nlam < 5; ++nlam)
+	lambda_pars[nlam] = Convert_TH1F_DoubleDlmHisto(lambdas_th1[nlam]);
 }
 
 void get_input_histos(TString ifile, TH1F **input_cf, TH1F **input_me, TH1F **input_me_orig)
