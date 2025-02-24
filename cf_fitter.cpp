@@ -279,7 +279,7 @@ void get_klambda_histos(TString filename, VAR *var, TH1F *lambda_pars[])
 
     for (size_t nlam = 0; nlam < 5; ++nlam)
     {
-	TString name = Form("Mult_%i/Mt_%i/Lambda", var->mult, var->mt - 1);
+	TString name = Form("Mult_%i/Mt_%i/Lambda", var->mult, var->mt + 1);
 	lambdas_th1[nlam] = static_cast<TH1F*>(lambdas[nlam]->Get(name));
 	lambdas_th1[nlam]->SetName(lambdas[nlam]->GetName());
 	lambdas_th1[nlam]->SetDirectory(0);
@@ -342,7 +342,7 @@ void get_klambda_histos(TString filename, VAR *var, DLM_Histo<double> *lambda_pa
     get_klambda_histos(filename, var, lambdas_th1.get());
 
     for (size_t nlam = 0; nlam < 5; ++nlam)
-	lambda_pars[nlam] = Convert_TH1F_DoubleDlmHisto(lambdas_th1[nlam]);
+	lambda_pars[nlam] = Convert_TH1F_DoubleDlmHisto(static_cast<TH1F*>(lambdas_th1[nlam]->Clone(TString(lambdas_th1[nlam]->GetName()) + "_tmp")));
 }
 
 void get_input_histos(TString ifile, TH1F **input_cf, TH1F **input_me, TH1F **input_me_orig)
@@ -899,7 +899,7 @@ void setup_global_fitter(ROOT::Fit::Fitter *fitter, VAR *var, double global_pars
     for (size_t n = 1; n < 10; ++n)
     {
 	if (n == 5) continue;
-	fitter->Config().ParSettings(n).SetLimits(-1., 1.);
+	fitter->Config().ParSettings(n).SetLimits(-1., 2.);
     }
 
     if (var->bsl)
