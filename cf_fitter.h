@@ -2,10 +2,14 @@
 #define CF_FITTER_H
 #include <map>
 #include <iostream>
+#include <cstring>
 
 #include "TString.h"
 #include "TH1F.h"
 #include "TRandom3.h"
+
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/ini_parser.hpp>
 
 #define BINS(X, Y) ((X[Y][1] - X[Y][0]) / 8.)
 
@@ -95,18 +99,40 @@ VAR {
     int frac   = 0;
     int mass   = 0;
     int normal = 0;
+
+    TString data = "";
+    TString target = "";
+    boost::property_tree::ptree files;
+
+    std::string operator[](std::string setting) { return files.get<std::string>(setting); }
+    std::string file(std::string setting) { return files.get<std::string>(setting); }
+    std::string get(std::string setting) { return files.get<std::string>(setting); }
 } VAR;
+
+inline void
+read_config_file(int argc, char *argv[], VAR *var)
+{
+    if (std::strstr(argv[1], ".ini"))
+    {
+	boost::property_tree::ini_parser::read_ini(argv[1], var->files);
+    }
+    else if (std::strstr(argv[1], ".json"))
+    {
+	std::cout << "json" << std::endl;
+    }
+}
 
 inline void
 set_vars(int argc, char *argv[], VAR *var)
 {
-    if (argc > 3) var->system = atoi(argv[3]);
-    if (argc > 4) var->charge = atoi(argv[4]);
-    if (argc > 5) var->sample = atoi(argv[5]);
-    if (argc > 6) var->stat   = atoi(argv[6]);
-    if (argc > 7) var->rsm    = atoi(argv[7]);
-    if (argc > 8) var->mt     = atoi(argv[8]);
-    if (argc > 9) var->mult   = atoi(argv[9]);
+    if (argc > 1) read_config_file(argc, argv, var);
+    if (argc > 2) var->system = atoi(argv[2]);
+    if (argc > 3) var->charge = atoi(argv[3]);
+    if (argc > 4) var->sample = atoi(argv[4]);
+    if (argc > 5) var->stat   = atoi(argv[5]);
+    if (argc > 6) var->rsm    = atoi(argv[6]);
+    if (argc > 7) var->mt     = atoi(argv[7]);
+    if (argc > 8) var->mult   = atoi(argv[8]);
 
     if (!var->stat)
     {
@@ -124,13 +150,13 @@ set_vars(int argc, char *argv[], VAR *var)
 	    var->mass  = random->Integer(3);
 	}
 
-	if (argc > 10) var->lam   = atoi(argv[10]);
-	if (argc > 11) var->fmr   = atoi(argv[11]);
-	if (argc > 12) var->fr    = atoi(argv[12]);
-	if (argc > 13) var->bsl   = atoi(argv[13]);
-	if (argc > 14) var->smear = atoi(argv[14]);
-	if (argc > 15) var->frac  = atoi(argv[15]);
-	if (argc > 16) var->mass  = atoi(argv[16]);
+	if (argc >  9) var->lam   = atoi(argv[9]);
+	if (argc > 10) var->fmr   = atoi(argv[10]);
+	if (argc > 11) var->fr    = atoi(argv[11]);
+	if (argc > 12) var->bsl   = atoi(argv[12]);
+	if (argc > 13) var->smear = atoi(argv[13]);
+	if (argc > 14) var->frac  = atoi(argv[14]);
+	if (argc > 15) var->mass  = atoi(argv[17]);
     }
 }
 
@@ -194,19 +220,20 @@ VAR_RSM {
     double frac, frac2;
     double mass, mass2;
     double tau, tau2;
-    VAR_RSM(int particle1, int particle2) :
+    TString epos;
+    VAR_RSM(int particle1, int particle2, TString epos_path) : epos(epos_path),
 	frac(RSM_FRAC[particle1][0]), mass(RSM_MASS[particle1][0]), tau(RSM_TAU[particle1][0]),
 	frac2(RSM_FRAC[particle2][0]), mass2(RSM_MASS[particle2][0]), tau2(RSM_TAU[particle2][0])
     {}
-    VAR_RSM(int particle1, int particle2, int rsm) :
+    VAR_RSM(int particle1, int particle2, int rsm, TString epos_path) : epos(epos_path),
 	frac(RSM_FRAC[particle1][rsm]), mass(RSM_MASS[particle1][rsm]), tau(RSM_TAU[particle1][0]),
 	frac2(RSM_FRAC[particle2][rsm]), mass2(RSM_MASS[particle2][rsm]), tau2(RSM_TAU[particle2][0])
     {}
 } VAR_RSM;
 
-void cf_fitter(TString, TString, TString, VAR*);
-void cf_fitter_pl(TString, TString, TString, VAR*);
-void cf_combined_fitter(TString, TString, TString, TString, TString, VAR*);
-void cf_combined_fitter_pl(TString, TString, TString, TString, VAR*);
+void cf_fitter(VAR*);
+void cf_fitter_pl(VAR*);
+void cf_combined_fitter(VAR*);
+void cf_combined_fitter_pl(VAR*);
 
 #endif
