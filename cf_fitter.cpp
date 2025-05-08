@@ -1804,7 +1804,7 @@ void cf_combined_fitter(VAR *var)
     /* save channel wave */
     if (var->save_tw)
     {
-	TDirectory *tdir_tw = ofile->mkdir("wave_function");
+	TDirectory *tdir_tw = ofile->mkdir("wave_funtion");
 	tdir_tw->cd();
 
 	for (size_t nwf = 0; nwf < wf_kstar.size(); ++nwf)
@@ -1831,7 +1831,7 @@ void cf_combined_fitter(VAR *var)
     /* save phase shifts */
     if (var->save_ps)
     {
-	TDirectory *tdir_ps = ofile->mkdir("phaseshifts");
+	TDirectory *tdir_ps = ofile->mkdir("phase_shifts");
 	tdir_ps->cd();
 
 	for (size_t nphase = 0; nphase < phase_names.size(); ++nphase)
@@ -1843,7 +1843,7 @@ void cf_combined_fitter(VAR *var)
     /* save potentials */
     if (var->save_pot)
     {
-	TDirectory *tdir_pot = ofile->mkdir("partwave_pot");
+	TDirectory *tdir_pot = ofile->mkdir("potentials");
 	tdir_pot->cd();
 
 	for (size_t npot = 0; npot < pot_names.size(); ++npot)
