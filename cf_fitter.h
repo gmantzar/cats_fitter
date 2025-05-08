@@ -13,6 +13,8 @@
 
 #define BINS(X, Y) ((X[Y][1] - X[Y][0]) / 8.)
 
+using namespace std;
+
 enum SYSTEM { PL = 1, };
 enum PARTICLES { PROTON = 0, LAMBDA };
 enum FITTER_TYPE { FIT_CATS = 0, FIT_RSM, FIT_BOTH };
@@ -35,6 +37,13 @@ static const TString SYSTEM_STR[] = {"PP", "PL"};
 static const TString CHARGE_STR[] = {"pp", "apap", "combined"};
 
 static const int fmr_ent = 3;
+
+static const vector<TString> str_mult_bins {"0.0-10.0", "10.0-50.0", "50.0-100.0"};
+
+//static const vector<TString> str_mt_bins_pl {"1.08-1.26", "1.26-1.32", "1.32-1.44", "1.44-1.65", "1.65-1.9", "1.9-4.5"};
+static const vector<TString> str_mt_bins_pl {"1.02-1.14", "1.14-1.2", "1.2-1.26", "1.26-1.38", "1.38-1.56", "1.56-1.86", "1.86-6"};
+
+static const vector<TString> str_mt_bins_pp {"1.02-1.14", "1.14-1.2", "1.2-1.26", "1.26-1.38", "1.38-1.56", "1.56-1.86", "1.86-2.4"};
 
 static double
 FEMTO_RANGE_PP[fmr_ent][3] = {
@@ -59,7 +68,7 @@ FIT_RANGE[][3] = {
     {0, 440},
 };
 
-static std::map<std::string, double>
+static map<string, double>
 LAM_PL = {
     {"gen",  0.4969},
     {"ps0",  0.1677},
@@ -72,13 +81,13 @@ LAM_PL = {
 static double
 INIT_RADIUS[2][3][8] = {
     {
-	{0, 1.30, 1.25, 1.15, 1.10, 1.05, 0.95, 0.80},
-	{0, 1.20, 1.15, 1.10, 1.05, 1.00, 0.90, 0.70},
-	{0, 1.10, 1.05, 1.00, 0.95, 0.90, 0.85, 0.60}
+	{1.30, 1.25, 1.15, 1.10, 1.05, 0.95, 0.80},
+	{1.20, 1.15, 1.10, 1.05, 1.00, 0.90, 0.70},
+	{1.10, 1.05, 1.00, 0.95, 0.90, 0.85, 0.60}
     },{
-	{0, 1.10, 1.05, 1.00, 0.95, 0.90, 0.80, 0.70},
-	{0, 1.00, 0.95, 0.90, 0.85, 0.80, 0.70, 0.60},
-	{0, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.50}
+	{1.10, 1.05, 1.00, 0.95, 0.90, 0.80, 0.70},
+	{1.00, 0.95, 0.90, 0.85, 0.80, 0.70, 0.60},
+	{0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.50}
     }
 };
 
@@ -100,25 +109,30 @@ VAR {
     int mass   = 0;
     int normal = 0;
 
+    bool save_tw = false;
+    bool save_pw = false;
+    bool save_ps = false;
+    bool save_pot = false;
+
     TString data = "";
     TString target = "";
     boost::property_tree::ptree files;
 
-    std::string operator[](std::string setting) { return files.get<std::string>(setting); }
-    std::string file(std::string setting) { return files.get<std::string>(setting); }
-    std::string get(std::string setting) { return files.get<std::string>(setting); }
+    string operator[](string setting) { return files.get<string>(setting); }
+    string file(string setting) { return files.get<string>(setting); }
+    string get(string setting) { return files.get<string>(setting); }
 } VAR;
 
 inline void
 read_config_file(int argc, char *argv[], VAR *var)
 {
-    if (std::strstr(argv[1], ".ini"))
+    if (strstr(argv[1], ".ini"))
     {
 	boost::property_tree::ini_parser::read_ini(argv[1], var->files);
     }
-    else if (std::strstr(argv[1], ".json"))
+    else if (strstr(argv[1], ".json"))
     {
-	std::cout << "json" << std::endl;
+	cout << "json" << endl;
     }
 }
 
@@ -157,6 +171,11 @@ set_vars(int argc, char *argv[], VAR *var)
 	if (argc > 13) var->smear = atoi(argv[13]);
 	if (argc > 14) var->frac  = atoi(argv[14]);
 	if (argc > 15) var->mass  = atoi(argv[17]);
+
+	var->save_tw  = static_cast<bool>(atoi(var->get("settings.save_totalwave").data()));
+	var->save_pw  = static_cast<bool>(atoi(var->get("settings.save_partialwave").data()));
+	var->save_ps  = static_cast<bool>(atoi(var->get("settings.save_phaseshift").data()));
+	var->save_pot = static_cast<bool>(atoi(var->get("settings.save_potential").data()));
     }
 }
 

@@ -43,7 +43,9 @@
 #define SOURCE	    "Gauss"
 #define SOURCE_RSM  "McLevy_ResoTM"
 
-#define out(X) std::cout << X << std::endl
+#define out(X) cout << X << endl
+
+using namespace std;
 
 /* fit classes */
 double bslfun(double *mom, double *par)
@@ -79,6 +81,32 @@ class plFitFunctionSimple
 	    mydecomp->Update(false, false);
 
 	    return N*(1. + a*k + b*k*k + c*k*k*k + d*k*k*k*k) * (mydecomp->EvalCk(k));
+	}
+};
+
+class FitFunctionSimplePLSB
+{
+    public:
+	DLM_CkDecomposition *mydecomp;
+	TF1 *sideband;
+	double lam_flat;
+	FitFunctionSimplePLSB(DLM_CkDecomposition *comp, double lam, TF1 *sb) :
+	    mydecomp(comp), lam_flat(lam), sideband(sb) {}
+
+	double operator() (double *mom, double *par)
+	{
+	    double &k = *mom;
+	    double &N = par[0];
+	    double &a = par[1];
+	    double &b = par[2];
+	    double &c = par[3];
+	    double &d = par[4];
+	    double &radius = par[5];
+
+	    mydecomp->GetCk()->SetSourcePar(0, radius);
+	    mydecomp->Update(false, false);
+
+	    return N*(1. + a*k + b*k*k + c*k*k*k + d*k*k*k*k) * (mydecomp->EvalCk(k) + lam_flat * (sideband->Eval(k) - 1));
 	}
 };
 
@@ -199,6 +227,7 @@ class GlobalChi2
 	    return (*fChi2_1)(par1) + (*fChi2_2)(par2);
 	}
 };
+/*-------------*/
 
 void print_info_2(VAR *var, VAR_FMR *fmr, VAR_FR *fr)
 {
@@ -230,9 +259,9 @@ void print_info_2(VAR *var, VAR_FMR *fmr, VAR_FR *fr)
     printf("\e[1;34m  └───────────────┘\e[0m\n\n");
 }
 
-void gev_to_mev(std::unique_ptr<TH1F> &hist)
+void gev_to_mev(unique_ptr<TH1F> &hist)
 {
-    std::unique_ptr<TH1F> hist_gev (static_cast<TH1F*>(hist->Clone("temporary")));
+    unique_ptr<TH1F> hist_gev (static_cast<TH1F*>(hist->Clone("temporary")));
 
     int bin_ent = hist->GetNbinsX();
     int bin_width = 1; // MeV
@@ -246,9 +275,9 @@ void gev_to_mev(std::unique_ptr<TH1F> &hist)
     }
 }
 
-std::string get_input_filename(VAR *var)
+string get_input_filename(VAR *var)
 {
-    std::string file = (*var)["settings.input"];
+    string file = (*var)["settings.input"];
     switch (var->system)
     {
 	case PP:
@@ -256,18 +285,31 @@ std::string get_input_filename(VAR *var)
 	case PL:
 	    file += var->get("pl.file"); break;
 	default:
-	    std::cerr << "Error: Missing Input Histograms!" << std::endl;
+	    cerr << "Error: Missing Input Histograms!" << endl;
     }
     return file;
 }
 
+string transform_lower(string s)
+{
+    transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return tolower(c); });
+    return s;
+}
+
+string transform_upper(string s)
+{
+    transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return toupper(c); });
+    return s;
+}
+
+/* histogram getter functions */
 void get_klambda_histos(TString filename, VAR *var, TH1F *lambda_pars[])
 {
     // k* dependent λ parameters
     TString klambda_filename = filename;
-    auto file = std::make_unique<TFile>(klambda_filename, "read");
-    auto lambdas = std::make_unique<TDirectory*[]>(5);
-    auto lambdas_th1 = std::make_unique<TH1F*[]>(5);
+    auto file = make_unique<TFile>(klambda_filename, "read");
+    auto lambdas = make_unique<TDirectory*[]>(5);
+    auto lambdas_th1 = make_unique<TH1F*[]>(5);
     lambdas[0] = static_cast<TDirectory*>(file->GetDirectory("genuine"));
     lambdas[1] = static_cast<TDirectory*>(file->GetDirectory("FD_lambda"));
     lambdas[2] = static_cast<TDirectory*>(file->GetDirectory("FD_sigma"));
@@ -285,7 +327,8 @@ void get_klambda_histos(TString filename, VAR *var, TH1F *lambda_pars[])
 	lambdas_th1[nlam]->SetDirectory(0);
     }
 
-    double scale = 0.1;
+    //double scale = 0.1;
+    double scale = 0.05;
     double total_gen_var = 0;
     double scale_non_gen = 0;
     double content = 0;
@@ -338,7 +381,7 @@ void get_klambda_histos(TString filename, VAR *var, TH1F *lambda_pars[])
 
 void get_klambda_histos(TString filename, VAR *var, DLM_Histo<double> *lambda_pars[])
 {
-    auto lambdas_th1 = std::make_unique<TH1F*[]>(5);
+    auto lambdas_th1 = make_unique<TH1F*[]>(5);
     get_klambda_histos(filename, var, lambdas_th1.get());
 
     for (size_t nlam = 0; nlam < 5; ++nlam)
@@ -347,43 +390,44 @@ void get_klambda_histos(TString filename, VAR *var, DLM_Histo<double> *lambda_pa
 
 void get_input_histos(TString ifile, TH1F **input_cf, TH1F **input_me, TH1F **input_me_orig)
 {
-    auto input_file = std::make_unique<TFile>(ifile, "read");
+    auto input_file = make_unique<TFile>(ifile, "read");
     *input_cf = (TH1F*) input_file->Get("CF");
     *input_me = (TH1F*) input_file->Get("ME");
     *input_me_orig = (TH1F*) input_file->Get("ME_original");
-    (*input_cf)->SetDirectory(0);
     (*input_cf)->GetXaxis()->SetRangeUser(0., 700.);
+    (*input_cf)->SetDirectory(0);
     (*input_me)->SetDirectory(0);
     (*input_me_orig)->SetDirectory(0);
     input_file->Close();
 }
 
-void get_input_histos(TString ifile, std::unique_ptr<TH1F> &input_cf,
-	std::unique_ptr<TH1F> &input_me, std::unique_ptr<TH1F> &input_me_orig)
+void get_input_histos(TString ifile, unique_ptr<TH1F> &input_cf,
+	unique_ptr<TH1F> &input_me, unique_ptr<TH1F> &input_me_orig)
 {
-    auto input_file = std::make_unique<TFile>(ifile, "read");
+    auto input_file = make_unique<TFile>(ifile, "read");
+    input_file->ls();
     input_cf.reset(static_cast<TH1F*>(input_file->Get("CF")));
     input_me.reset(static_cast<TH1F*>(input_file->Get("ME")));
     input_me_orig.reset(static_cast<TH1F*>(input_file->Get("ME_original")));
-    input_cf->SetDirectory(0);
     input_cf->GetXaxis()->SetRangeUser(0., 700.);
+    input_cf->SetDirectory(0);
     input_me->SetDirectory(0);
     input_me_orig->SetDirectory(0);
     input_file->Close();
 }
 
-void get_input_pp(TString ifile, std::unique_ptr<TH1F> &input_cf,
-	std::unique_ptr<TH1F> &input_me, std::unique_ptr<TH1F> &input_me_orig, VAR *var, int charge)
+void get_input_pp(TString ifile, unique_ptr<TH1F> &input_cf,
+	unique_ptr<TH1F> &input_me, unique_ptr<TH1F> &input_me_orig, VAR *var, int charge)
 {
-    auto input_file = std::make_unique<TFile>(ifile, "read");
+    auto input_file = make_unique<TFile>(ifile, "read");
 
-    TString mt[] = {"1.02-1.14", "1.14-1.2", "1.2-1.26", "1.26-1.38", "1.38-1.56", "1.56-1.86", "1.86-2.4"};
-    TString mult[] = {"0.0-10.0", "10.0-50.0", "50.0-100.0"};
+    auto mt = str_mt_bins_pp;
+    auto mult = str_mult_bins;
 
     TString tdir_name = (charge == APAP) ? "apap/" : "pp/";
     tdir_name += "Rebin_8_Dim_1-" + mt[var->mt] + "_Dim_2-0-100_Dim_3-" + mult[var->mult];
 
-    std::unique_ptr<TDirectory> tdir (static_cast<TDirectory*>(input_file->Get(tdir_name)));
+    unique_ptr<TDirectory> tdir (static_cast<TDirectory*>(input_file->Get(tdir_name)));
     input_cf.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("CF/CF_Reweighted_rescaled"))->Clone("CF")));
     input_me.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("ME/ME_Reweighted_rescaled"))->Clone("ME")));
     input_me_orig.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("No_Rebin/ME"))->Clone("ME_original")));
@@ -399,15 +443,15 @@ void get_input_pp(TString ifile, std::unique_ptr<TH1F> &input_cf,
 
 void get_input_pl(TString ifile, TH1F **input_cf, TH1F **input_me, TH1F **input_me_orig, VAR *var, int charge)
 {
-    auto input_file = std::make_unique<TFile>(ifile, "read");
+    auto input_file = make_unique<TFile>(ifile, "read");
 
-    TString mt[] = {"1.02-1.14", "1.14-1.2", "1.2-1.26", "1.26-1.38", "1.38-1.56", "1.56-1.86", "1.86-6"};
-    TString mult[] = {"0.0-10.0", "10.0-50.0", "50.0-100.0"};
+    auto mt = str_mt_bins_pl;
+    auto mult = str_mult_bins;
 
     TString tdir_name = (charge == APAP) ? "APAL/" : "PL/";
     tdir_name += "Rebin_8_Dim_1-" + mt[var->mt] + "_Dim_3-" + mult[var->mult];
 
-    std::unique_ptr<TDirectory> tdir (static_cast<TDirectory*>(input_file->Get(tdir_name)));
+    unique_ptr<TDirectory> tdir (static_cast<TDirectory*>(input_file->Get(tdir_name)));
     *input_cf = static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("CF/CF_Reweighted_rescaled"))->Clone("CF"));
     *input_me = static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("ME/ME_Reweighted_rescaled"))->Clone("ME"));
     *input_me_orig = static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("No_Rebin/ME/ME"))->Clone("ME_original"));
@@ -419,21 +463,24 @@ void get_input_pl(TString ifile, TH1F **input_cf, TH1F **input_me, TH1F **input_
     (*input_me_orig)->SetDirectory(0);
 }
 
-void get_input_pl(TString ifile, std::unique_ptr<TH1F> &input_cf,
-	std::unique_ptr<TH1F> &input_me, std::unique_ptr<TH1F> &input_me_orig, VAR *var, int charge)
+void get_input_pl(TString ifile, unique_ptr<TH1F> &input_cf,
+	unique_ptr<TH1F> &input_me, unique_ptr<TH1F> &input_me_orig, VAR *var, int charge)
 {
-    auto input_file = std::make_unique<TFile>(ifile, "read");
+    auto input_file = make_unique<TFile>(ifile, "read");
 
-    TString mt[] = {"1.02-1.14", "1.14-1.2", "1.2-1.26", "1.26-1.38", "1.38-1.56", "1.56-1.86", "1.86-6"};
-    TString mult[] = {"0.0-10.0", "10.0-50.0", "50.0-100.0"};
+    auto mt = str_mt_bins_pl;
+    auto mult = str_mult_bins;
 
+    //TString tdir_name = (charge == APAP) ? "apal/" : "pl/";
     TString tdir_name = (charge == APAP) ? "APAL/" : "PL/";
-    tdir_name += "Rebin_8_Dim_1-" + mt[var->mt] + "_Dim_3-" + mult[var->mult];
+    //tdir_name += "Rebin_10_Dim_1-" + mt[var->mt] + "_Dim_2-0-100_Dim_3-" + mult[var->mult];
+    tdir_name += "Rebin_10_Dim_1-" + mt[var->mt] + "_Dim_3-" + mult[var->mult];
 
-    std::unique_ptr<TDirectory> tdir (static_cast<TDirectory*>(input_file->Get(tdir_name)));
-    input_cf.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("CF/CF_Reweighted_rescaled"))->Clone("CF")));
-    input_me.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("ME/ME_Reweighted_rescaled"))->Clone("ME")));
-    input_me_orig.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("No_Rebin/ME/ME"))->Clone("ME_original")));
+    unique_ptr<TDirectory> tdir (static_cast<TDirectory*>(input_file->Get(tdir_name)));
+    input_cf.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("CF/CF_Reweighted_Rescaled"))->Clone("CF")));
+    input_me.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("ME/ME_Reweighted_Rescaled"))->Clone("ME")));
+    input_me_orig.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("No_Rebin/ME/ME_Rescaled"))->Clone("ME_original")));
+    gev_to_mev(input_me_orig);
 
     input_cf->GetXaxis()->SetRangeUser(0., 700.);
 
@@ -442,14 +489,34 @@ void get_input_pl(TString ifile, std::unique_ptr<TH1F> &input_cf,
     input_me_orig->SetDirectory(0);
 }
 
+/*
+void get_sideband_fit(string ifile,  unique_ptr<TF1> &sideband, string which_band, VAR_FR *fr, VAR *var, int charge)
+{
+    auto mt = str_mt_bins_pl;
+    auto mult = str_mult_bins;
+
+    auto input_file = make_unique<TFile>(ifile, "read");
+
+    TString tdir_name = (charge == APAP) ? "APAL_sideBand" : "PL_sideBand";
+    tdir_name += (!(transform_lower(which_band)).compare("high"))? "High" : "Low";
+    tdir_name += "Rebin_10_Dim_1-" + mt[var->mt] + "_Dim_3-" + mult[var->mult];
+
+    unique_ptr<TDirectory> tdir (static_cast<TDirectory*>(input_file->Get(tdir_name)));
+    unique_ptr<TH1F> sideband_th1 (static_cast<TH1F*>(tdir->Get("CF/CF_Reweighted_rescaled")));
+    sideband.reset(new TF1("sideband", "pol5", fr->Min, fr->Max));
+
+    sideband_th1->Fit(sideband.get());
+}
+*/
+
 void get_sample_histos(TString fname_cf, TString fname_syst, TH1F **input_cf, TH1F **input_me, TH1F **input_me_orig, VAR *var, int charge)
 {
     get_input_histos(fname_cf, input_cf, input_me, input_me_orig);
-    auto file_syst = std::make_unique<TFile>(fname_syst, "read");
+    auto file_syst = make_unique<TFile>(fname_syst, "read");
     TString name_syst = Form("femto-dream-pair-task-track-track_std/mt_%i/mult_1/rebin_8/syst_th1", var->mt);
 
-    std::unique_ptr<TH1F> input_syst (static_cast<TH1F*>(file_syst->Get(name_syst)));
-    std::unique_ptr<TH1F> sample_cf (static_cast<TH1F*>((*input_cf)->Clone(Form("CF_sample_%s", CHARGE_STR[charge].Data()))));
+    unique_ptr<TH1F> input_syst (static_cast<TH1F*>(file_syst->Get(name_syst)));
+    unique_ptr<TH1F> sample_cf (static_cast<TH1F*>((*input_cf)->Clone(Form("CF_sample_%s", CHARGE_STR[charge].Data()))));
 
     sample_cf->SetTitle(sample_cf->GetName());
     sample_cf->Reset();
@@ -474,15 +541,16 @@ void get_sample_histos(TString fname_cf, TString fname_syst, TH1F **input_cf, TH
     (*input_cf)->SetDirectory(0);
 }
 
-void get_sample_histos(TString fname_cf, TString fname_syst, std::unique_ptr<TH1F> &input_cf,
-	std::unique_ptr<TH1F> &input_me, std::unique_ptr<TH1F> &input_me_orig, VAR *var, int charge)
+void get_sample_histos(TString fname_cf, TString fname_syst, unique_ptr<TH1F> &input_cf,
+	unique_ptr<TH1F> &input_me, unique_ptr<TH1F> &input_me_orig, VAR *var, int charge)
 {
-    get_input_histos(fname_cf, input_cf, input_me, input_me_orig);
-    auto file_syst = std::make_unique<TFile>(fname_syst, "read");
-    TString name_syst = Form("femto-dream-pair-task-track-track_std/mt_%i/mult_1/rebin_8/syst_th1", var->mt);
+    get_input_pp(fname_cf, input_cf, input_me, input_me_orig, var, charge);
+    auto file_syst = make_unique<TFile>(fname_syst, "read");
+    // +2 for some reason the systematics file starts at 1 and the first bin is skipped
+    TString name_syst = Form("femto-dream-pair-task-track-track_std/mt_%i/mult_1/rebin_8/syst_th1", var->mt + 2);
 
-    std::unique_ptr<TH1F> input_syst (static_cast<TH1F*>(file_syst->Get(name_syst)));
-    std::unique_ptr<TH1F> sample_cf (static_cast<TH1F*>(input_cf->Clone(Form("CF_sample_%s", CHARGE_STR[charge].Data()))));
+    unique_ptr<TH1F> input_syst (static_cast<TH1F*>(file_syst->Get(name_syst)));
+    unique_ptr<TH1F> sample_cf (static_cast<TH1F*>(input_cf->Clone(Form("CF_sample_%s", CHARGE_STR[charge].Data()))));
 
     sample_cf->SetTitle(sample_cf->GetName());
     sample_cf->Reset();
@@ -512,7 +580,7 @@ void get_input(TString fname_cf, T &input_cf, T &input_me, T &input_me_orig, VAR
 {
     if (var->sample)
     {
-	TString name_syst = TString(var->get("settings.input").data()) + Form("UFFA_syst_%s_MultPercentile%i.root", CHARGE_STR[charge].Data(), var->mult);
+	TString name_syst = TString(var->get("settings.input")) + Form("UFFA_syst_%s_MultPercentile%i.root", CHARGE_STR[charge].Data(), var->mult);
 	get_sample_histos(fname_cf, name_syst, input_cf, input_me, input_me_orig, var, charge);
     }
     else
@@ -539,7 +607,7 @@ void get_resolution_matrix(TString ipath, TH2F *&matrix, VAR *var, int charge)
 
     if (var->smear)
     {
-	auto file = std::make_unique<TFile>(ipath + "input/shared/" + name_file, "read");
+	auto file = make_unique<TFile>(ipath + "input/shared/" + name_file, "read");
 	matrix = (TH2F*) file->Get(name_matrix);
         matrix->SetDirectory(0);
 
@@ -554,57 +622,215 @@ void get_resolution_matrix(TString ipath, TH2F *&matrix, VAR *var, int charge)
 	matrix = NULL;
 }
 
-void get_cats_potential(CATS *cats, TH1F **pot_hist, TString target)
+void get_corrected_cf(TH1F *cfs[], TH1F *lambdas[], double bsl_pars[], TH1F **corrected_cf)
 {
-    double pot_bins = 1000, pot_min = 0, pot_max = 8;
-    double radius;
-    int channel = 0, part_wave = 0;
+    enum CF_ID { RAW = 0, LAM = 1, SIG = 2 };
+    enum LAM_ID { GEN = 0, FLAT = 3, FAKE = 4 };
 
-    if	    (!strcmp("1S0", target)) { channel = 0; part_wave = 0; }
-    else if (!strcmp("1P1", target)) { channel = 0; part_wave = 1; }
-    else if (!strcmp("3P0", target)) { channel = 1; part_wave = 1; }
-    else if (!strcmp("3P1", target)) { channel = 2; part_wave = 1; }
-    else if (!strcmp("3P2", target)) { channel = 3; part_wave = 1; }
-    else if (!strcmp("1D2", target)) { channel = 0; part_wave = 2; }
-    else    out("Partial Wave \"" << target << "\" not supported!");
-
-    auto potential = std::make_unique<TH1F>("hPot", "hPot", pot_bins, pot_min, pot_max);
-    for (size_t nbin = 1; nbin < pot_bins; ++nbin)
+    double value_x, value_y, bsl, raw, lam, sig, flat;
+    double lam_gen, lam_lam, lam_sig, lam_flat, lam_fake;
+    for (size_t nbin = 1; nbin < (*corrected_cf)->GetNbinsX(); ++nbin)
     {
-	radius = potential->GetBinCenter(nbin);
-	potential->SetBinContent(nbin, cats->EvaluateThePotential(channel, part_wave, 50, radius));
+	value_x = cfs[RAW]->GetBinCenter(nbin);
+	bsl = bsl_pars[0] * (1 + bsl_pars[2]*pow(value_x, 2) + bsl_pars[3]*pow(value_x, 3));
+
+	raw = cfs[RAW]->GetBinContent(nbin);
+	lam = cfs[LAM]->GetBinContent(nbin);
+	sig = cfs[SIG]->GetBinContent(nbin);
+	lam_gen = lambdas[GEN]->GetBinContent(nbin);
+	lam_lam = lambdas[LAM]->GetBinContent(nbin);
+	lam_sig = lambdas[SIG]->GetBinContent(nbin);
+	lam_flat = lambdas[FLAT]->GetBinContent(nbin);
+	lam_fake = lambdas[FAKE]->GetBinContent(nbin);
+
+	value_y = (1/lam_gen)*((raw/bsl) - lam_lam*lam - lam_sig*sig - lam_flat - lam_fake);
+
+	if (value_y > 10e-6 && value_y < 50)
+	    (*corrected_cf)->SetBinContent(nbin, value_y);
+    }
+}
+/*----------------------------*/
+
+/* CATS getter functions for wave histos */
+void get_cats_totalwave(CATS *cats, TH1F **container, double kstar, int spin)
+{
+    int channel = 0;
+    if (spin) channel = 1;
+
+    //unsigned bins = cats->GetNumMomBins();
+    double kstar_bin = cats->GetMomBin(kstar);
+    double xmin = 0, xmax = 30, bins = (xmax - xmin)*100;
+    double radius;
+
+    TString title = TString("hTotalWF_channel") + channel + "_" + static_cast<int>(kstar) + "mev";
+    auto histo = make_unique<TH1F>(title, title, bins, xmin, xmax);
+    for (size_t nbin = 0; nbin < bins; ++nbin)
+    {
+	radius = histo->GetBinCenter(nbin);
+	histo->SetBinContent(nbin, cats->EvalWaveFun2(kstar_bin, radius, channel));
     }
 
-    *pot_hist = (TH1F*) potential->Clone();
-    (*pot_hist)->SetDirectory(0);
+    *container = static_cast<TH1F*>(histo->Clone());
+    (*container)->SetDirectory(0);
+}
+
+void get_cats_totalwaves(CATS *cats, TH1F *container[], vector<double> kstars, int spin)
+{
+    for (size_t nkstar = 0; nkstar < kstars.size(); ++nkstar)
+    {
+	get_cats_totalwave(cats, &container[nkstar], kstars[nkstar], spin);
+    }
+}
+
+void get_cats_radialwave(CATS *cats, TH1F **container, double kstar, TString target, TString dimension)
+{
+    int channel = 0, part_wave = 0;
+    if	    (!strcmp("1S0", target)) { part_wave = 0; channel = 0; }
+    else if (!strcmp("1P1", target)) { part_wave = 1; channel = 0; }
+    else if (!strcmp("1D2", target)) { part_wave = 2; channel = 0; }
+    else if (!strcmp("3P0", target)) { part_wave = 1; channel = 1; }
+    else if (!strcmp("3P1", target)) { part_wave = 1; channel = 2; }
+    else if (!strcmp("3P2", target)) { part_wave = 1; channel = 3; }
+    else    out("Partial Wave \"" << target << "\" not supported!");
+
+    int dim = 1;
+    if (!strcmp("re",	dimension)) dim = 0;
+    if (!strcmp("real",	dimension)) dim = 0;
+
+    //unsigned bins = cats->GetNumMomBins();
+    double kstar_bin = cats->GetMomBin(kstar);
+    double xmin = 0, xmax = 30, bins = (xmax - xmin)*100;
+    double radius;
+    bool divide_by_r = true;
+
+    TString title = TString("hRadialWF_") + target + "_" + static_cast<int>(kstar) + "mev";
+    auto histo = make_unique<TH1F>(title, title, bins, xmin, xmax);
+    for (size_t nbin = 0; nbin < bins; ++nbin)
+    {
+	radius = histo->GetBinCenter(nbin);
+
+	if (dim) histo->SetBinContent(nbin, cats->EvalRadialWaveFunction(kstar_bin, channel, part_wave, radius, divide_by_r).imag());
+	else	 histo->SetBinContent(nbin, cats->EvalRadialWaveFunction(kstar_bin, channel, part_wave, radius, divide_by_r).real());
+    }
+
+    *container = static_cast<TH1F*>(histo->Clone());
+    (*container)->SetDirectory(0);
+}
+
+void get_cats_radialwaves(CATS *cats, TH1F *container[], vector<double> kstars, TString target, TString dimension)
+{
+    for (size_t nkstar = 0; nkstar < kstars.size(); ++nkstar)
+    {
+	get_cats_radialwave(cats, &container[nkstar], kstars[nkstar], target, dimension);
+    }
 }
 
 template <typename T>
-void get_cats_potentials(CATS *cats, TH1F *pot_histos[], std::vector<T> pot_names)
+void get_cats_radialwaves(CATS *cats, TH1F *container[], double kstar, vector<T> targets, TString dimension)
 {
-    for (size_t npot = 0; npot < pot_names.size(); ++npot)
+    for (size_t ntarget = 0; ntarget < targets.size(); ++ntarget)
     {
-	get_cats_potential(cats, &pot_histos[npot], pot_names[npot]);
-	pot_histos[npot]->SetName(TString("hPot_") + pot_names[npot]);
-	pot_histos[npot]->SetTitle(TString("hPot_") + pot_names[npot]);
+	get_cats_radialwave(cats, &container[ntarget], kstar, targets[ntarget], dimension);
     }
 }
 
+void get_cats_phaseshift(CATS *cats, TH1F **container, TString target, double xmin, double xmax)
+{
+    int channel = 0, part_wave = 0;
+    if	    (!strcmp("1S0", target)) { part_wave = 0; channel = 0; }
+    else if (!strcmp("1P1", target)) { part_wave = 1; channel = 0; }
+    else if (!strcmp("1D2", target)) { part_wave = 2; channel = 0; }
+    else if (!strcmp("3P0", target)) { part_wave = 1; channel = 1; }
+    else if (!strcmp("3P1", target)) { part_wave = 1; channel = 2; }
+    else if (!strcmp("3P2", target)) { part_wave = 1; channel = 3; }
+    else    out("Partial Wave \"" << target << "\" not supported!");
+
+    //unsigned bins = cats->GetNumMomBins();
+    double bins = (xmax - xmin)*10;
+    double momentum;
+
+    TString title = TString("hPhase_") + target;
+    auto histo = make_unique<TH1F>(title, title, bins, xmin, xmax);
+    for (size_t nbin = 0; nbin < bins; ++nbin)
+    {
+	momentum = histo->GetBinCenter(nbin);
+	histo->SetBinContent(nbin, 180. / TMath::Pi() * cats->EvalPhaseShift(momentum, channel, part_wave));
+    }
+
+    *container = static_cast<TH1F*>(histo->Clone());
+    (*container)->SetDirectory(0);
+}
+
+template <typename T>
+void get_cats_phaseshifts(CATS *cats, TH1F *container[], vector<T> targets, double xmin, double xmax)
+{
+    for (size_t ntarget = 0; ntarget < targets.size(); ++ntarget)
+    {
+	get_cats_phaseshift(cats, &container[ntarget], targets[ntarget], xmin, xmax);
+    }
+}
+
+void get_cats_potential(CATS *cats, TH1F **pot_hist, double kstar, TString target)
+{
+    int channel = 0, part_wave = 0;
+    if	    (!strcmp("1S0", target)) { part_wave = 0; channel = 0; }
+    else if (!strcmp("1P1", target)) { part_wave = 1; channel = 0; }
+    else if (!strcmp("1D2", target)) { part_wave = 2; channel = 0; }
+    else if (!strcmp("3P0", target)) { part_wave = 1; channel = 1; }
+    else if (!strcmp("3P1", target)) { part_wave = 1; channel = 2; }
+    else if (!strcmp("3P2", target)) { part_wave = 1; channel = 3; }
+    else    out("Partial Wave \"" << target << "\" not supported!");
+
+    double xmin = 0, xmax = 8, bins = (xmax - xmin)*100 - 1;
+    double radius;
+
+    TString title = TString("hPot_") + target + "_" + static_cast<int>(kstar) + "mev";
+    auto histo = make_unique<TH1F>(title, title, bins, xmin, xmax);
+    for (size_t nbin = 1; nbin < bins; ++nbin)
+    {
+	radius = histo->GetBinCenter(nbin);
+	histo->SetBinContent(nbin, cats->EvaluateThePotential(channel, part_wave, kstar, radius));
+    }
+
+    *pot_hist = static_cast<TH1F*>(histo->Clone());
+    (*pot_hist)->SetDirectory(0);
+}
+
+void get_cats_potentials(CATS *cats, TH1F *pot_histos[], vector<double> kstars, TString target)
+{
+    for (size_t nkstar = 0; nkstar < kstars.size(); ++nkstar)
+    {
+	get_cats_potential(cats, &pot_histos[nkstar], kstars[nkstar], target);
+    }
+}
+
+template <typename T>
+void get_cats_potentials(CATS *cats, TH1F *pot_histos[], double kstar, vector<T> pot_names)
+{
+    for (size_t npot = 0; npot < pot_names.size(); ++npot)
+    {
+	get_cats_potential(cats, &pot_histos[npot], kstar, pot_names[npot]);
+    }
+}
+/*---------------------------------------*/
+
+/* CATS setup functions */
 void setup_epos(DLM_CleverMcLevyResoTM *MagicSource, VAR_RSM *var_rsm, int restype, const char *file)
 {
-    auto epos_file = std::make_unique<TFile>(file, "read");
-    std::unique_ptr<TNtuple> tntuple (static_cast<TNtuple*>(epos_file->Get("InfoTuple_ClosePairs")));
+    auto epos_file = make_unique<TFile>(file, "read");
+    unique_ptr<TNtuple> tntuple (static_cast<TNtuple*>(epos_file->Get("InfoTuple_ClosePairs")));
 
     Float_t k_D, fP1, fP2, fM1, fM2, Tau1, Tau2;
     Float_t AngleRcP1, AngleRcP2, AngleP1P2;
     double RanVal1, RanVal2, RanVal3;
     DLM_Random RanGen(11);
 
-    std::vector<std::pair<std::string, Float_t *>> values = {std::pair{"k_D", &k_D},
-	std::pair{"P1", &fP1}, std::pair{"P2", &fP2},
-	std::pair{"M1", &fM1}, std::pair{"M2", &fM2},
-	std::pair{"Tau1", &Tau1}, std::pair{"Tau2", &Tau2},
-	std::pair{"AngleRcP1", &AngleRcP1}, std::pair{"AngleRcP2", &AngleRcP2}, std::pair{"AngleP1P2", &AngleP1P2}
+    vector<pair<string, Float_t *>> values = {
+	pair{"k_D", &k_D},
+	pair{"P1", &fP1}, pair{"P2", &fP2},
+	pair{"M1", &fM1}, pair{"M2", &fM2},
+	pair{"Tau1", &Tau1}, pair{"Tau2", &Tau2},
+	pair{"AngleRcP1", &AngleRcP1}, pair{"AngleRcP2", &AngleRcP2}, pair{"AngleP1P2", &AngleP1P2}
     };
 
     for (auto branch : values)
@@ -669,7 +895,7 @@ void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, co
     else if (!strcmp("px1530", target)) { setupper->SetUpCats_pXim(*cats, "pXim1530", SOURCE); }
     else if (strstr(target, "av18"))
     {
-	auto cPars = std::make_unique<CATSparameters>(CATSparameters::tSource, 1, true);
+	auto cPars = make_unique<CATSparameters>(CATSparameters::tSource, 1, true);
 	cPars->SetParameter(0, 1.2);
 
 	cats->SetMomentumDependentSource(false);
@@ -686,11 +912,11 @@ void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, co
 	double PotPars3P2[8] = {NN_AV18, static_cast<double>(POT_FLAG), 1, 1, 1, 1, 1, 2};
 	double PotPars1D2[8] = {NN_AV18, static_cast<double>(POT_FLAG), 1, 1, 1, 0, 2, 2};
 
-	auto cPotPars1S0 = std::make_unique<CATSparameters>(CATSparameters::tPotential, 8, true);
-	auto cPotPars3P0 = std::make_unique<CATSparameters>(CATSparameters::tPotential, 8, true);
-	auto cPotPars3P1 = std::make_unique<CATSparameters>(CATSparameters::tPotential, 8, true);
-	auto cPotPars3P2 = std::make_unique<CATSparameters>(CATSparameters::tPotential, 8, true);
-	auto cPotPars1D2 = std::make_unique<CATSparameters>(CATSparameters::tPotential, 8, true);
+	auto cPotPars1S0 = make_unique<CATSparameters>(CATSparameters::tPotential, 8, true);
+	auto cPotPars3P0 = make_unique<CATSparameters>(CATSparameters::tPotential, 8, true);
+	auto cPotPars3P1 = make_unique<CATSparameters>(CATSparameters::tPotential, 8, true);
+	auto cPotPars3P2 = make_unique<CATSparameters>(CATSparameters::tPotential, 8, true);
+	auto cPotPars1D2 = make_unique<CATSparameters>(CATSparameters::tPotential, 8, true);
 
 	cPotPars1S0->SetParameters(PotPars1S0);
 	cPotPars3P0->SetParameters(PotPars3P0);
@@ -852,10 +1078,11 @@ void setup_decomp(DLM_CkDecomposition *&decomp, DLM_Ck *&ck, CATS *cats, TH2F *r
     decomp = new DLM_CkDecomposition(var1, var2, *ck, res_matrix);
 }
 
-void setup_decomp(DLM_CkDecomposition *&decomp, DLM_Ck *&ck, CATS *cats, std::unique_ptr<TH2F> &res_matrix, VAR_FMR *range, const char *target)
+void setup_decomp(DLM_CkDecomposition *&decomp, DLM_Ck *&ck, CATS *cats, unique_ptr<TH2F> &res_matrix, VAR_FMR *range, const char *target)
 {
     setup_decomp(decomp, ck, cats, res_matrix.get(), range, target);
 }
+/*----------------------*/
 
 void setup_fitter(TF1 *fitter, VAR *var, double radius)
 {
@@ -924,7 +1151,7 @@ void create_output_default(TFile *&file, TString iname, VAR *var)
 
     file = new TFile(TString(var->get("settings.output").data()) + fname, "recreate");
     printf("  \e[1;36m-->  \e[0;36mFile Created  \e[1;36m<--\e[0m\n\n");
-    std::cout << "  " << var->get("settings.output").data() << "\e[1;34m" << fname << "\e[0m\n\n";
+    cout << "  " << var->get("settings.output").data() << "\e[1;34m" << fname << "\e[0m\n\n";
 }
 
 void create_output_sample(TFile *&file, TString iname, VAR *var)
@@ -944,7 +1171,7 @@ void create_output_sample(TFile *&file, TString iname, VAR *var)
 
     file = new TFile(opath + fname, "recreate");
     printf("  \e[1;36m-->  \e[0;36mFile Created  \e[1;36m<--\e[0m\n\n");
-    std::cout << "  " << opath << "\e[1;34m" << fname << "\e[0m\n\n";
+    cout << "  " << opath << "\e[1;34m" << fname << "\e[0m\n\n";
 }
 
 void create_output(TFile *&file, TString iname, VAR *var)
@@ -955,49 +1182,22 @@ void create_output(TFile *&file, TString iname, VAR *var)
 	create_output_default(file, iname, var);
 }
 
-void get_corrected_cf(TH1F *cfs[], TH1F *lambdas[], double bsl_pars[], TH1F **corrected_cf)
-{
-    enum CF_ID { RAW = 0, LAM = 1, SIG = 2 };
-    enum LAM_ID { GEN = 0, FLAT = 3, FAKE = 4 };
-
-    double value_x, value_y, bsl, raw, lam, sig, flat;
-    double lam_gen, lam_lam, lam_sig, lam_flat, lam_fake;
-    for (size_t nbin = 1; nbin < (*corrected_cf)->GetNbinsX(); ++nbin)
-    {
-	value_x = cfs[RAW]->GetBinCenter(nbin);
-	bsl = bsl_pars[0] * (1 + bsl_pars[2]*pow(value_x, 2) + bsl_pars[3]*pow(value_x, 3));
-
-	raw = cfs[RAW]->GetBinContent(nbin);
-	lam = cfs[LAM]->GetBinContent(nbin);
-	sig = cfs[SIG]->GetBinContent(nbin);
-	lam_gen = lambdas[GEN]->GetBinContent(nbin);
-	lam_lam = lambdas[LAM]->GetBinContent(nbin);
-	lam_sig = lambdas[SIG]->GetBinContent(nbin);
-	lam_flat = lambdas[FLAT]->GetBinContent(nbin);
-	lam_fake = lambdas[FAKE]->GetBinContent(nbin);
-
-	value_y = (1/lam_gen)*((raw/bsl) - lam_lam*lam - lam_sig*sig - lam_flat - lam_fake);
-
-	if (value_y > 10e-6 && value_y < 50)
-	    (*corrected_cf)->SetBinContent(nbin, value_y);
-    }
-}
-
+/* correlation fitter */
 void cf_fitter(VAR *var)
 {
     printf("\n  \e[1;36m-->  \e[0;36mEntering the fitter!  \e[1;36m<--\e[0m\n\n");
 
-    VAR_RSM *var_rsm = new VAR_RSM(PROTON, PROTON, var->rsm, var->get("epos_path"));
+    VAR_RSM *var_rsm = new VAR_RSM(PROTON, PROTON, var->rsm, var->get("epos.path"));
     VAR_FMR *range_femto = new VAR_FMR(var->system, var->fmr);
     VAR_FR  *range_fit = new VAR_FR(var->fr);
     VAR_QA  *qa_plots = new VAR_QA(var);
 
-    if (var->mt > 6)
+    if (var->mt > 4)
     {
 	range_femto->Min = 8;
 	range_fit->Min = 8;
     }
-    if (var->mt == 4 && var->mult == 2)
+    if (var->mt == 2 && var->mult == 2)
     {
 	range_femto->Min = 8;
 	range_fit->Min = 8;
@@ -1005,16 +1205,16 @@ void cf_fitter(VAR *var)
 
     print_info_2(var, range_femto, range_fit);
 
-    std::unique_ptr<TH1F> input_cf, input_me, input_me_orig;
+    unique_ptr<TH1F> input_cf, input_me, input_me_orig;
     get_input(get_input_filename(var), input_cf, input_me, input_me_orig, var, PP);
 
-    std::unique_ptr<TH1F*> uptr_lambda_pars_th1 (new TH1F*[5]);
+    unique_ptr<TH1F*> uptr_lambda_pars_th1 (new TH1F*[5]);
     auto lambda_pars_th1 = static_cast<TH1F**>(uptr_lambda_pars_th1.get());
 
-    std::unique_ptr<DLM_Histo<double>*> uptr_lambda_pars (new DLM_Histo<double>*[5]);
+    unique_ptr<DLM_Histo<double>*> uptr_lambda_pars (new DLM_Histo<double>*[5]);
     auto lambda_pars = static_cast<DLM_Histo<double>**>(uptr_lambda_pars.get());
 
-    TString file_klambda = var->get("settings.project") + "input/shared/Lambda_" + ((var->charge)? "Anti" : "") + "Proton.root";
+    TString file_klambda = (var->charge)? var->get("pp.lampars_a") : var->get("pp.lampars_p");
     get_klambda_histos(file_klambda, var, lambda_pars_th1);
     get_klambda_histos(file_klambda, var, lambda_pars);
 
@@ -1171,7 +1371,7 @@ void cf_fitter_pl(VAR *var)
     print_info_2(var, range_femto, range_fit);
 
     TH1F *input_cf, *input_me, *input_me_orig;
-    get_input_pl(std::string(var->get("settings.input") + var->get("pl.file")).data(), &input_cf, &input_me, &input_me_orig, var, var->charge);
+    get_input_pl(string(var->get("settings.input") + var->get("pl.file")).data(), &input_cf, &input_me, &input_me_orig, var, var->charge);
 
     /* CATS Setup */
     DLM_CommonAnaFunctions cats_setupper;
@@ -1182,7 +1382,7 @@ void cf_fitter_pl(VAR *var)
     TH2F *matrix_lxm_dec = cats_setupper.GetResidualMatrix("pLambda", "pXim");
     TH2F *matrix_lx1530_dec = cats_setupper.GetResidualMatrix("pXim", "pXim1530");
 
-    //std::vector<float> cusp_var {0.40, 0.27, 0.33}; // variations of the cusp
+    //vector<float> cusp_var {0.40, 0.27, 0.33}; // variations of the cusp
 
     /* CATS Objects */
     CATS cats_pl, cats_ps0, cats_px0, cats_pxm, cats_px1530;
@@ -1201,8 +1401,8 @@ void cf_fitter_pl(VAR *var)
     setup_decomp(decomp_pxm, ck_pxm, &cats_pxm, NULL,		range_femto, "pxm");
     setup_decomp(decomp_px1530, ck_px1530, &cats_px1530, NULL,	range_femto, "px1530");
 
-    std::unique_ptr<double[]> lam_pars_pl  (new double[5]);
-    std::unique_ptr<double[]> lam_pars_pxi (new double[5]);
+    unique_ptr<double[]> lam_pars_pl  (new double[5]);
+    unique_ptr<double[]> lam_pars_pxi (new double[5]);
     cats_setupper.SetUpLambdaPars_pL("pp13TeV_HM_Dec19", 0, 0, lam_pars_pl.get());
     cats_setupper.SetUpLambdaPars_pXim("pp13TeV_HM_Dec19", 0, 0, lam_pars_pxi.get());
 
@@ -1331,14 +1531,14 @@ void cf_combined_fitter(VAR *var)
     VAR_QA  *qa_plots = new VAR_QA(var);
 
     // This setup is because we are missing the first cf bin for these mt and mult bins
-    if (var->mt > 6)
+    if (var->mt > 4)
     {
 	range_femto_pp->Min = 8;
 	range_femto_aa->Min = 8;
 	range_fit_pp->Min = 8;
 	range_fit_aa->Min = 8;
     }
-    if (var->mt == 4 && var->mult == 2)
+    if (var->mt == 2 && var->mult == 2)
     {
 	range_femto_aa->Min = 8;
 	range_fit_aa->Min = 8;
@@ -1351,24 +1551,20 @@ void cf_combined_fitter(VAR *var)
     int fit_pars_aa[6] = { 5, 6, 7, 8, 9, 10 };
     double global_pars[11] = {0.98, 0, 0, 0, 0, 0.98, 0, 0, 0, 0, 1};	    // init parameters
 
-    std::unique_ptr<TH1F> input_cf_pp, input_me_pp, input_me_orig_pp;
-    std::unique_ptr<TH1F> input_cf_aa, input_me_aa, input_me_orig_aa;
+    unique_ptr<TH1F> input_cf_pp, input_me_pp, input_me_orig_pp;
+    unique_ptr<TH1F> input_cf_aa, input_me_aa, input_me_orig_aa;
     get_input(get_input_filename(var), input_cf_pp, input_me_pp, input_me_orig_pp, var, PP);
     get_input(get_input_filename(var), input_cf_aa, input_me_aa, input_me_orig_aa, var, APAP);
 
-    std::unique_ptr<TH1F*> uptr_lambda_pars_pp_th1 (new TH1F*[5]);
-    std::unique_ptr<TH1F*> uptr_lambda_pars_aa_th1 (new TH1F*[5]);
-    auto lambda_pars_pp_th1 = static_cast<TH1F**>(uptr_lambda_pars_pp_th1.get());
-    auto lambda_pars_aa_th1 = static_cast<TH1F**>(uptr_lambda_pars_aa_th1.get());
-    get_klambda_histos(var->get("pp.lampars_p"), var, lambda_pars_pp_th1);
-    get_klambda_histos(var->get("pp.lampars_a"), var, lambda_pars_aa_th1);
+    unique_ptr<TH1F*[]> lambda_pars_pp_th1 (new TH1F*[5]);
+    unique_ptr<TH1F*[]> lambda_pars_aa_th1 (new TH1F*[5]);
+    get_klambda_histos(var->get("pp.lampars_p"), var, lambda_pars_pp_th1.get());
+    get_klambda_histos(var->get("pp.lampars_a"), var, lambda_pars_aa_th1.get());
 
-    std::unique_ptr<DLM_Histo<double>*> uptr_lambda_pars_pp (new DLM_Histo<double>*[5]);
-    std::unique_ptr<DLM_Histo<double>*> uptr_lambda_pars_aa (new DLM_Histo<double>*[5]);
-    auto lambda_pars_pp = static_cast<DLM_Histo<double>**>(uptr_lambda_pars_pp.get());
-    auto lambda_pars_aa = static_cast<DLM_Histo<double>**>(uptr_lambda_pars_aa.get());
-    get_klambda_histos(var->get("pp.lampars_p"), var, lambda_pars_pp);
-    get_klambda_histos(var->get("pp.lampars_a"), var, lambda_pars_aa);
+    unique_ptr<DLM_Histo<double>*[]> lambda_pars_pp (new DLM_Histo<double>*[5]);
+    unique_ptr<DLM_Histo<double>*[]> lambda_pars_aa (new DLM_Histo<double>*[5]);
+    get_klambda_histos(var->get("pp.lampars_p"), var, lambda_pars_pp.get());
+    get_klambda_histos(var->get("pp.lampars_a"), var, lambda_pars_aa.get());
 
     TH2F *matrix_pp_res = nullptr;
     TH2F *matrix_aa_res = nullptr;
@@ -1378,9 +1574,9 @@ void cf_combined_fitter(VAR *var)
     DLM_CommonAnaFunctions cats_setupper;
     cats_setupper.SetCatsFilesFolder(var->get("cats.path").data());
 
-    std::unique_ptr<TH2F> matrix_pl_res (cats_setupper.GetResolutionMatrix("pp13TeV_HM_DimiJun20","pLambda"));
-    std::unique_ptr<TH2F> matrix_pl_dec (cats_setupper.GetResidualMatrix("pp", "pLambda"));
-    std::unique_ptr<TH2F> matrix_ps_dec (cats_setupper.GetResidualMatrix("pp", "pSigmaPlus"));
+    unique_ptr<TH2F> matrix_pl_res (cats_setupper.GetResolutionMatrix("pp13TeV_HM_DimiJun20","pLambda"));
+    unique_ptr<TH2F> matrix_pl_dec (cats_setupper.GetResidualMatrix("pp", "pLambda"));
+    unique_ptr<TH2F> matrix_ps_dec (cats_setupper.GetResidualMatrix("pp", "pSigmaPlus"));
 
     DLM_CleverMcLevyResoTM MagicSource_pp, MagicSource_aa;
     DLM_CleverMcLevyResoTM *pMS_pp = (var->rsm)? &MagicSource_pp : NULL;
@@ -1411,18 +1607,18 @@ void cf_combined_fitter(VAR *var)
     setup_decomp(decomp_ps_aa, ck_ps_aa, &cats_ps_aa, matrix_pl_res, range_femto_aa, "psp");
 
     // non-genuine contributions to pp
-    decomp_pp->AddContribution(0, *lambda_pars_pp[1], DLM_CkDecomp::cFeedDown, decomp_pl_pp, matrix_pl_dec.get());
-    decomp_pp->AddContribution(1, *lambda_pars_pp[2], DLM_CkDecomp::cFeedDown, decomp_ps_pp, matrix_ps_dec.get());
-    decomp_pp->AddContribution(2, *lambda_pars_pp[3], DLM_CkDecomp::cFeedDown);
-    decomp_pp->AddContribution(3, *lambda_pars_pp[4], DLM_CkDecomp::cFake);
+    decomp_pp->AddContribution(0, *lambda_pars_pp.get()[1], DLM_CkDecomp::cFeedDown, decomp_pl_pp, matrix_pl_dec.get());
+    decomp_pp->AddContribution(1, *lambda_pars_pp.get()[2], DLM_CkDecomp::cFeedDown, decomp_ps_pp, matrix_ps_dec.get());
+    decomp_pp->AddContribution(2, *lambda_pars_pp.get()[3], DLM_CkDecomp::cFeedDown);
+    decomp_pp->AddContribution(3, *lambda_pars_pp.get()[4], DLM_CkDecomp::cFake);
     decomp_pp->AddPhaseSpace(input_me_pp.get());
     decomp_pp->AddPhaseSpace(0, input_me_pp.get());
 
     // non-genuine contributions to apap
-    decomp_aa->AddContribution(0, *lambda_pars_aa[1], DLM_CkDecomp::cFeedDown, decomp_pl_aa, matrix_pl_dec.get());
-    decomp_aa->AddContribution(1, *lambda_pars_aa[2], DLM_CkDecomp::cFeedDown, decomp_ps_aa, matrix_ps_dec.get());
-    decomp_aa->AddContribution(2, *lambda_pars_aa[3], DLM_CkDecomp::cFeedDown);
-    decomp_aa->AddContribution(3, *lambda_pars_aa[4], DLM_CkDecomp::cFake);
+    decomp_aa->AddContribution(0, *lambda_pars_aa.get()[1], DLM_CkDecomp::cFeedDown, decomp_pl_aa, matrix_pl_dec.get());
+    decomp_aa->AddContribution(1, *lambda_pars_aa.get()[2], DLM_CkDecomp::cFeedDown, decomp_ps_aa, matrix_ps_dec.get());
+    decomp_aa->AddContribution(2, *lambda_pars_aa.get()[3], DLM_CkDecomp::cFeedDown);
+    decomp_aa->AddContribution(3, *lambda_pars_aa.get()[4], DLM_CkDecomp::cFake);
     decomp_aa->AddPhaseSpace(input_me_aa.get());
     decomp_aa->AddPhaseSpace(0, input_me_aa.get());
 
@@ -1479,10 +1675,10 @@ void cf_combined_fitter(VAR *var)
     double temp, total_chi2 = 0.;
     for (size_t nbin = input_cf_pp->FindBin(50); input_cf_pp->GetBinCenter(nbin) < 140; ++nbin)
     {
-	temp = (std::pow(input_cf_pp->GetBinContent(nbin) - fitter_pp->Eval(input_cf_pp->GetBinCenter(nbin)), 2)) / std::pow(input_cf_pp->GetBinError(nbin), 2);
+	temp = (pow(input_cf_pp->GetBinContent(nbin) - fitter_pp->Eval(input_cf_pp->GetBinCenter(nbin)), 2)) / pow(input_cf_pp->GetBinError(nbin), 2);
 	total_chi2 += temp;
     }
-    //std::cout << "pp fit Chi2 = " << total_chi2 << std::endl;
+    //cout << "pp fit Chi2 = " << total_chi2 << endl;
     out("pp fit Chi2 = " << total_chi2);
 
     fitter_pp->SetRange(opt_range_pp().first, opt_range_pp().second);
@@ -1525,6 +1721,32 @@ void cf_combined_fitter(VAR *var)
 	child_ps_smear_aa->SetBinContent(nbin + 1, decomp_aa->EvalSignalSmearedChild(1, child_ps_smear_aa->GetBinCenter(nbin + 1) + 1) + 1);
     }
 
+    /* create and fill histos of the total wave function for k* values */
+    vector<double> wf_kstar {10, 20, 40, 80, 160};
+    unique_ptr<TH1F*[]> twave_histos (new TH1F*[wf_kstar.size()]);
+    // channel 0 -> anti-symmetric wave function
+    if (var->save_tw) get_cats_totalwaves(&cats_pp, twave_histos.get(), wf_kstar, 0);
+
+    /* create and fill histos of partial waves for given k* values */
+    vector<const char*> pwaves_names = {"1S0", "3P0", "3P1", "3P2", "1D2"};
+    vector<double> pwaves_kstars {10, 20, 40, 80, 160};
+    unique_ptr<unique_ptr<TH1F*[]>[]> pwaves_histos (new unique_ptr<TH1F*[]>[pwaves_names.size()]);
+    for (size_t npwave = 0; npwave < pwaves_names.size(); ++npwave)
+    {
+	pwaves_histos[npwave] = make_unique<TH1F*[]>(pwaves_kstars.size());
+	get_cats_radialwaves(&cats_pp, pwaves_histos[npwave].get(), pwaves_kstars, pwaves_names[npwave], "real");
+    }
+
+    /* create and fill histos of phaseshifts */
+    vector<const char*> phase_names = {"1S0", "3P0", "3P1", "3P2", "1D2"};
+    unique_ptr<TH1F*[]> phase_histos (new TH1F*[phase_names.size()]);
+    if (var->save_ps) get_cats_phaseshifts(&cats_pp, phase_histos.get(), phase_names, range_femto_pp->Min, range_femto_pp->Max);
+
+    /* create and fill histos of potentials for partial waves */
+    vector<const char*> pot_names = {"1S0", "3P0", "3P1", "3P2", "1D2"};
+    unique_ptr<TH1F*[]> pot_histos (new TH1F*[pot_names.size()]);
+    if (var->save_pot) get_cats_potentials(&cats_pp, pot_histos.get(), 40, pot_names); // k* = 40 MeV
+
     TH1F **cfs_pp = (TH1F**) malloc(sizeof(TH1F[3]));
     cfs_pp[0] = static_cast<TH1F*>(input_cf_pp->Clone());
     cfs_pp[1] = child_pl_smear_pp;
@@ -1537,18 +1759,14 @@ void cf_combined_fitter(VAR *var)
 
     TH1F *corrected_cf_pp = (TH1F*) input_cf_pp->Clone("CF_corrected_pp");
     corrected_cf_pp->Reset();
-    get_corrected_cf(cfs_pp, lambda_pars_pp_th1, bsl_pars_pp, &corrected_cf_pp);
+    get_corrected_cf(cfs_pp, lambda_pars_pp_th1.get(), bsl_pars_pp, &corrected_cf_pp);
 
     TH1F *corrected_cf_aa = (TH1F*) input_cf_aa->Clone("CF_corrected_aa");
     corrected_cf_aa->Reset();
-    get_corrected_cf(cfs_aa, lambda_pars_aa_th1, bsl_pars_aa, &corrected_cf_aa);
-
-    TH1F **pot_histos = new TH1F*[5];
-    std::vector<const char*> pot_names = {"1S0", "3P0", "3P1", "3P2", "1D2"};
-    get_cats_potentials(&cats_pp, pot_histos, pot_names);
+    get_corrected_cf(cfs_aa, lambda_pars_aa_th1.get(), bsl_pars_aa, &corrected_cf_aa);
 
     printf("\n\e[1;36m  -->  \e[0;36mData Fit  \e[1;36m<--\e[0m\n\n");
-    result.Print(std::cout); printf("\n");
+    result.Print(cout); printf("\n");
     printf("\e[1;34m  ┌───────────────┐\e[0m\n");
     printf("\e[1;34m  │  Source Size  │   \e[0m%.2f ± %.2f\n", result.Parameter(10), result.Error(10));
     printf("\e[1;34m  └───────────────┘\e[0m\n\n");
@@ -1583,26 +1801,71 @@ void cf_combined_fitter(VAR *var)
     child_ps_smear_pp->Write("ps_smeared_pp");
     child_ps_smear_aa->Write("ps_smeared_apap");
 
-    pot_histos[0]->Write("hPotential_1S0");
-    pot_histos[1]->Write("hPotential_3P0");
-    pot_histos[2]->Write("hPotential_3P1");
-    pot_histos[3]->Write("hPotential_3P2");
-    pot_histos[4]->Write("hPotential_1D2");
+    /* save channel wave */
+    if (var->save_tw)
+    {
+	TDirectory *tdir_tw = ofile->mkdir("wave_function");
+	tdir_tw->cd();
+
+	for (size_t nwf = 0; nwf < wf_kstar.size(); ++nwf)
+	{
+	    twave_histos[nwf]->Write();
+	}
+    }
+
+    /* save radial waves */
+    if (var->save_pw)
+    {
+	TDirectory *tdir_pw = ofile->mkdir("partial_waves");
+	tdir_pw->cd();
+
+	for (size_t nkstar = 0; nkstar < pwaves_kstars.size(); ++nkstar)
+	{
+	    for (size_t npwave = 0; npwave < pwaves_names.size(); ++npwave)
+	    {
+		pwaves_histos[npwave][nkstar]->Write();
+	    }
+	}
+    }
+
+    /* save phase shifts */
+    if (var->save_ps)
+    {
+	TDirectory *tdir_ps = ofile->mkdir("phaseshifts");
+	tdir_ps->cd();
+
+	for (size_t nphase = 0; nphase < phase_names.size(); ++nphase)
+	{
+	    phase_histos[nphase]->Write();
+	}
+    }
+
+    /* save potentials */
+    if (var->save_pot)
+    {
+	TDirectory *tdir_pot = ofile->mkdir("partwave_pot");
+	tdir_pot->cd();
+
+	for (size_t npot = 0; npot < pot_names.size(); ++npot)
+	{
+	    pot_histos[npot]->Write();
+	}
+    }
 
     TDirectory *tdir_lam = ofile->mkdir("lam_pars");
     tdir_lam->cd();
 
-    lambda_pars_pp_th1[0]->Write("genuine_pp");
-    lambda_pars_pp_th1[1]->Write("lambda_pp");
-    lambda_pars_pp_th1[2]->Write("sigma_pp");
-    lambda_pars_pp_th1[3]->Write("flat_pp");
-    lambda_pars_pp_th1[4]->Write("fake_pp");
+    lambda_pars_pp_th1.get()[0]->Write("genuine_pp");
+    lambda_pars_pp_th1.get()[1]->Write("lambda_pp");
+    lambda_pars_pp_th1.get()[2]->Write("sigma_pp");
+    lambda_pars_pp_th1.get()[3]->Write("flat_pp");
+    lambda_pars_pp_th1.get()[4]->Write("fake_pp");
 
-    lambda_pars_aa_th1[0]->Write("genuine_apap");
-    lambda_pars_aa_th1[1]->Write("lambda_apap");
-    lambda_pars_aa_th1[2]->Write("sigma_apap");
-    lambda_pars_aa_th1[3]->Write("flat_apap");
-    lambda_pars_aa_th1[4]->Write("fake_apap");
+    lambda_pars_aa_th1.get()[0]->Write("genuine_apap");
+    lambda_pars_aa_th1.get()[1]->Write("lambda_apap");
+    lambda_pars_aa_th1.get()[2]->Write("sigma_apap");
+    lambda_pars_aa_th1.get()[3]->Write("flat_apap");
+    lambda_pars_aa_th1.get()[4]->Write("fake_apap");
 
     TDirectory *tdir_qa = ofile->mkdir("qa_plots");
     tdir_qa->cd();
@@ -1636,15 +1899,20 @@ void cf_combined_fitter_pl(VAR *var)
     VAR_FR  *range_fit_aa = new VAR_FR(var->fr);
     VAR_QA  *qa_plots = new VAR_QA(var);
 
-    range_femto_pp->Max = 400;
-    range_femto_pp->Min = 0;
-    range_femto_aa->Max = 400;
-    range_femto_aa->Min = 0;
+    //range_fit_pp->Max = 300;
+    //range_fit_pp->Min = 0;
+    //range_fit_aa->Max = 300;
+    //range_fit_aa->Min = 0;
 
-    range_fit_pp->Max = 500;
-    range_fit_pp->Min = 0;
-    range_fit_aa->Max = 500;
-    range_fit_aa->Min = 0;
+    //range_femto_pp->Max = 300;
+    //range_femto_pp->Min = 0;
+    //range_femto_aa->Max = 300;
+    //range_femto_aa->Min = 0;
+
+    range_femto_pp->Max = range_fit_pp->Max;
+    range_femto_pp->Min = range_fit_pp->Min;
+    range_femto_aa->Max = range_fit_aa->Max;
+    range_femto_aa->Min = range_fit_aa->Min;
 
     print_info_2(var, range_femto_pp, range_fit_pp);
 
@@ -1653,28 +1921,34 @@ void cf_combined_fitter_pl(VAR *var)
     int fit_pars_aa[6] = { 5, 6, 7, 8, 9, 10 };
     double global_pars[11] = {0.98, 0, 0, 0, 0, 0.98, 0, 0, 0, 0, 1};	    // init parameters
 
-    std::unique_ptr<TH1F> input_cf_pp, input_me_pp, input_me_orig_pp;
-    std::unique_ptr<TH1F> input_cf_aa, input_me_aa, input_me_orig_aa;
-    get_input_pl(std::string(var->get("settings.input") + var->get("pl.file")).data(), input_cf_pp, input_me_pp, input_me_orig_pp, var, PP);
-    get_input_pl(std::string(var->get("settings.input") + var->get("pl.file")).data(), input_cf_aa, input_me_aa, input_me_orig_aa, var, APAP);
+    unique_ptr<TH1F> input_cf_pp, input_me_pp, input_me_orig_pp;
+    unique_ptr<TH1F> input_cf_aa, input_me_aa, input_me_orig_aa;
+    get_input_pl(string(var->get("settings.input") + var->get("pl.file")).data(), input_cf_pp, input_me_pp, input_me_orig_pp, var, PP);
+    get_input_pl(string(var->get("settings.input") + var->get("pl.file")).data(), input_cf_aa, input_me_aa, input_me_orig_aa, var, APAP);
 
     DLM_CommonAnaFunctions cats_setupper;
     cats_setupper.SetCatsFilesFolder(var->get("cats.path").data());
 
-    std::unique_ptr<TH2F> matrix_pl_res (cats_setupper.GetResolutionMatrix("pp13TeV_HM_DimiJun20","pLambda"));
-    std::unique_ptr<TH2F> matrix_pl_dec (cats_setupper.GetResidualMatrix("pp", "pLambda"));
-    std::unique_ptr<TH2F> matrix_ls0_dec (cats_setupper.GetResidualMatrix("pLambda", "pSigma0"));
-    std::unique_ptr<TH2F> matrix_lxm_dec (cats_setupper.GetResidualMatrix("pLambda", "pXim"));
+    unique_ptr<TH2F> matrix_pl_res  (cats_setupper.GetResolutionMatrix("pp13TeV_HM_DimiJun20","pLambda"));
+    unique_ptr<TH2F> matrix_pl_dec  (cats_setupper.GetResidualMatrix("pp", "pLambda"));
+    unique_ptr<TH2F> matrix_ls0_dec (cats_setupper.GetResidualMatrix("pLambda", "pSigma0"));
+    unique_ptr<TH2F> matrix_lxm_dec (cats_setupper.GetResidualMatrix("pLambda", "pXim"));
+
+    DLM_CleverMcLevyResoTM MagicSource_pp, MagicSource_aa;
+    DLM_CleverMcLevyResoTM *pMS_pp = (var->rsm)? &MagicSource_pp : NULL;
+    DLM_CleverMcLevyResoTM *pMS_aa = (var->rsm)? &MagicSource_aa : NULL;
+    VAR_RSM *pRSM = (var->rsm)? var_rsm : NULL;
+    TString target = (var->rsm)? "plrsm" : "pl";
 
     /* CATS Objects */
     CATS cats_pl_pp, cats_ps0_pp, cats_px0_pp, cats_pxm_pp;
-    setup_cats(&cats_setupper, &cats_pl_pp,  range_femto_pp, "pl");
+    setup_cats(&cats_setupper, &cats_pl_pp,  range_femto_pp, target.Data(), pMS_pp, pRSM);
     setup_cats(&cats_setupper, &cats_ps0_pp, range_femto_pp, "ps0");
     setup_cats(&cats_setupper, &cats_px0_pp, range_femto_pp, "px0");
     setup_cats(&cats_setupper, &cats_pxm_pp, range_femto_pp, "pxm");
 
     CATS cats_pl_aa, cats_ps0_aa, cats_px0_aa, cats_pxm_aa;
-    setup_cats(&cats_setupper, &cats_pl_aa,  range_femto_aa, "pl");
+    setup_cats(&cats_setupper, &cats_pl_aa,  range_femto_aa, target.Data(), pMS_pp, pRSM);
     setup_cats(&cats_setupper, &cats_ps0_aa, range_femto_aa, "ps0");
     setup_cats(&cats_setupper, &cats_px0_aa, range_femto_aa, "px0");
     setup_cats(&cats_setupper, &cats_pxm_aa, range_femto_aa, "pxm");
@@ -1755,10 +2029,10 @@ void cf_combined_fitter_pl(VAR *var)
     double temp, total_chi2 = 0.;
     for (size_t nbin = input_cf_pp->FindBin(50); input_cf_pp->GetBinCenter(nbin) < 140; ++nbin)
     {
-	temp = (std::pow(input_cf_pp->GetBinContent(nbin) - fitter_pp->Eval(input_cf_pp->GetBinCenter(nbin)), 2)) / std::pow(input_cf_pp->GetBinError(nbin), 2);
+	temp = (pow(input_cf_pp->GetBinContent(nbin) - fitter_pp->Eval(input_cf_pp->GetBinCenter(nbin)), 2)) / pow(input_cf_pp->GetBinError(nbin), 2);
 	total_chi2 += temp;
     }
-    //std::cout << "pp fit Chi2 = " << total_chi2 << std::endl;
+    //cout << "pp fit Chi2 = " << total_chi2 << endl;
     out("pp fit Chi2 = " << total_chi2);
 
     fitter_pp->SetRange(opt_range_pp().first, opt_range_pp().second);
@@ -1789,10 +2063,10 @@ void cf_combined_fitter_pl(VAR *var)
 
     decomp_pl_pp->Update(true, true);
     decomp_pl_aa->Update(true, true);
-    TH1F *child_pl_smear_pp = new TH1F("ps0_smeared_pp",   "pS0 smeared pp",    500, 0, 500);
-    TH1F *child_pl_smear_aa = new TH1F("ps0_smeared_apap", "pS0 smeared apap",  500, 0, 500);
-    TH1F *child_ps_smear_pp = new TH1F("pxm_smeared_pp",   "pS- smeared pp",   500, 0, 500);
-    TH1F *child_ps_smear_aa = new TH1F("pxm_smeared_apap", "pS- smeared apap", 500, 0, 500);
+    TH1F *child_pl_smear_pp = new TH1F("ps0_smeared_pp",   "pS0 smeared pp",    500, 0, range_fit_pp->Max);
+    TH1F *child_pl_smear_aa = new TH1F("ps0_smeared_apap", "pS0 smeared apap",  500, 0, range_fit_aa->Max);
+    TH1F *child_ps_smear_pp = new TH1F("pxm_smeared_pp",   "pS- smeared pp",   500, 0, range_fit_pp->Max);
+    TH1F *child_ps_smear_aa = new TH1F("pxm_smeared_apap", "pS- smeared apap", 500, 0, range_fit_aa->Max);
     for (short nbin = 0; nbin < 500; ++nbin)
     {
 	child_pl_smear_pp->SetBinContent(nbin + 1, decomp_pl_pp->EvalSignalSmearedChild(0, child_pl_smear_pp->GetBinCenter(nbin + 1) + 1) + 1);
@@ -1812,7 +2086,7 @@ void cf_combined_fitter_pl(VAR *var)
     cfs_aa[2] = child_ps_smear_aa;
 
     printf("\n\e[1;36m  -->  \e[0;36mData Fit  \e[1;36m<--\e[0m\n\n");
-    result.Print(std::cout); printf("\n");
+    result.Print(cout); printf("\n");
     printf("\e[1;34m  ┌───────────────┐\e[0m\n");
     printf("\e[1;34m  │  Source Size  │   \e[0m%.2f ± %.2f\n", result.Parameter(10), result.Error(10));
     printf("\e[1;34m  └───────────────┘\e[0m\n\n");
@@ -1841,8 +2115,8 @@ void cf_combined_fitter_pl(VAR *var)
 
     child_pl_smear_pp->Write("ps0_smeared_pp");
     child_pl_smear_aa->Write("ps0_smeared_apap");
-    child_ps_smear_pp->Write("psm_smeared_pp");
-    child_ps_smear_aa->Write("psm_smeared_apap");
+    child_ps_smear_pp->Write("pxm_smeared_pp");
+    child_ps_smear_aa->Write("pxm_smeared_apap");
 
     TDirectory *tdir_qa = ofile->mkdir("qa_plots");
     tdir_qa->cd();
