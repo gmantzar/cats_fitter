@@ -109,6 +109,7 @@ VAR {
     int mass   = 0;
     int normal = 0;
 
+    bool prefit = false;
     bool save_tw = false;
     bool save_pw = false;
     bool save_ps = false;
@@ -172,6 +173,7 @@ set_vars(int argc, char *argv[], VAR *var)
 	if (argc > 14) var->frac  = atoi(argv[14]);
 	if (argc > 15) var->mass  = atoi(argv[17]);
 
+	var->prefit   = static_cast<bool>(atoi(var->get("settings.prefit").data()));
 	var->save_tw  = static_cast<bool>(atoi(var->get("settings.save_totalwave").data()));
 	var->save_pw  = static_cast<bool>(atoi(var->get("settings.save_partialwave").data()));
 	var->save_ps  = static_cast<bool>(atoi(var->get("settings.save_phaseshift").data()));

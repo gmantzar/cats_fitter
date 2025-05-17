@@ -15,8 +15,9 @@ int main(int argc, char *argv[])
     else
 	printf("\n  \e[1;36m-->  \e[0;36mCATS Fitting!  \e[1;36m<--\e[0m\n");
 
-    TString ipath  = vars.get("settings.input").data();
-    TString opath  = vars.get("settings.output").data();
+    string settings = (vars.system == PP)? "pp." : "pl.";
+    TString ipath  = vars.get(settings + "input").data();
+    TString opath  = vars.get(settings + "output").data();
 
     printf("\n");
     printf("\e[1;34m  ┌───────────────┐\e[0m\n");

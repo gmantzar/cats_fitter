@@ -58,7 +58,28 @@ double bslfun(double *mom, double *par)
     double &c = par[3];
     double &d = par[4];
 
-    return N*(1. + a*k + b*pow(k, 2) + c*pow(k, 3.) + d*pow(k, 4.));
+    return N*(1. + a*1. + b*k + c*pow(k, 2) + d*pow(k, 3.));
+}
+
+void baseline_fit(TH1F *histo, vector<double> &parameters, pair<double, double> xrange)
+{
+    // N = par[0]; a = par[1]; b = par[2]; c = par[3]; d = par[4];
+    // pol = N * (1. + a*1. + b*x + c*x² + d*x³)
+    auto npol = [](double *x, double par[], int degree)
+    {
+	double total = par[0];
+	for (int order = 0; order <= degree; ++order) { total += par[0]*par[order + 1]*pow(*x, order); }
+	return total;
+    };
+
+    // 3rd degree polynomial without 2nd degree term
+    auto cpol3 = [&](double *x, double par[]) { par[3] = 0; return npol(x, par, 3); };
+
+    auto fitter = make_unique<TF1>(TF1("prefitter", cpol3, xrange.first, xrange.second, 5));
+    fitter->FixParameter(3, 0);
+    histo->Fit(fitter.get(), "S, N, R, M");
+
+    for (size_t npar = 0; npar < 5; ++npar) parameters.push_back(fitter->GetParameter(npar));
 }
 
 class plFitFunctionSimple
@@ -113,22 +134,29 @@ class FitFunctionSimplePLSB
 class FitFunSimpleAvg
 {
     public:
-	DLM_CkDecomposition *mydecomp;
-	TH1F *cf;
-	TH1F *me;
+	DLM_CkDecomposition *mydecomp = nullptr;
+	TH1F *cf = nullptr;
+	TH1F *me = nullptr;
 
-	FitFunSimpleAvg(TH1F *hData, TH1F *hME, DLM_CkDecomposition *comp)
+	bool prefit = false;
+	vector<double> prefit_pars;
+
+	FitFunSimpleAvg(TH1F *hData, TH1F *hME, DLM_CkDecomposition *comp, bool bsl_prefit = false)
+	    : mydecomp(comp), prefit(bsl_prefit)
 	{
-	    mydecomp = comp;
 	    cf = static_cast<TH1F*>(hData->Clone("correlation_function"));
 	    me = static_cast<TH1F*>(hME->Clone("mixed_event"));
+
+	    if (prefit) baseline_fit(cf, prefit_pars, {240, 500});
 	}
 
-	FitFunSimpleAvg(TH1F **hData, TH1F **hMe, DLM_CkDecomposition *comp)
+	FitFunSimpleAvg(TH1F **hData, TH1F **hME, DLM_CkDecomposition *comp, bool bsl_prefit = false)
+	    : mydecomp(comp), prefit(bsl_prefit)
 	{
-	    mydecomp = comp;
 	    cf = static_cast<TH1F*>((*hData)->Clone("correlation_function"));
-	    me = static_cast<TH1F*>((*hMe)->Clone("mixed_event"));
+	    me = static_cast<TH1F*>((*hME)->Clone("mixed_event"));
+
+	    if (prefit) baseline_fit(cf, prefit_pars, {240, 500});
 	}
 
 	double operator() (double *mom, double *par)
@@ -160,7 +188,7 @@ class FitFunSimpleAvg
 	    }
 	    double ck_eval = (me_sum < 1e-6)? 0 : cf_avg / me_sum;
 
-	    return N*(1. + a*k + b*pow(k, 2) + c*pow(k, 3.) + d*pow(k, 4.)) * ck_eval;
+	    return N*(1. + a*1. + b*k + c*pow(k, 2) + d*pow(k, 3.)) * ck_eval;
 	}
 };
 
@@ -277,13 +305,13 @@ void gev_to_mev(unique_ptr<TH1F> &hist)
 
 string get_input_filename(VAR *var)
 {
-    string file = (*var)["settings.input"];
+    string file = "";
     switch (var->system)
     {
 	case PP:
-	    file += var->get("pp.file"); break;
+	    file = var->get("pp.input") + var->get("pp.file"); break;
 	case PL:
-	    file += var->get("pl.file"); break;
+	    file = var->get("pl.input") + var->get("pl.file"); break;
 	default:
 	    cerr << "Error: Missing Input Histograms!" << endl;
     }
@@ -477,9 +505,9 @@ void get_input_pl(TString ifile, unique_ptr<TH1F> &input_cf,
     tdir_name += "Rebin_10_Dim_1-" + mt[var->mt] + "_Dim_3-" + mult[var->mult];
 
     unique_ptr<TDirectory> tdir (static_cast<TDirectory*>(input_file->Get(tdir_name)));
-    input_cf.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("CF/CF_Reweighted_Rescaled"))->Clone("CF")));
-    input_me.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("ME/ME_Reweighted_Rescaled"))->Clone("ME")));
-    input_me_orig.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("No_Rebin/ME/ME_Rescaled"))->Clone("ME_original")));
+    input_cf.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("CF/CF_Reweighted_rescaled"))->Clone("CF")));
+    input_me.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("ME/ME_Reweighted_rescaled"))->Clone("ME")));
+    input_me_orig.reset(static_cast<TH1F*>(static_cast<TH1F*>(tdir->Get("No_Rebin/ME"))->Clone("ME_original")));
     gev_to_mev(input_me_orig);
 
     input_cf->GetXaxis()->SetRangeUser(0., 700.);
@@ -580,7 +608,8 @@ void get_input(TString fname_cf, T &input_cf, T &input_me, T &input_me_orig, VAR
 {
     if (var->sample)
     {
-	TString name_syst = TString(var->get("settings.input")) + Form("UFFA_syst_%s_MultPercentile%i.root", CHARGE_STR[charge].Data(), var->mult);
+	string settings = (var->system == PP)? "pp.input" : "pl.input";
+	TString name_syst = TString(var->get(settings)) + Form("UFFA_syst_%s_MultPercentile%i.root", CHARGE_STR[charge].Data(), var->mult);
 	get_sample_histos(fname_cf, name_syst, input_cf, input_me, input_me_orig, var, charge);
     }
     else
@@ -699,7 +728,7 @@ void get_cats_radialwave(CATS *cats, TH1F **container, double kstar, TString tar
 
     //unsigned bins = cats->GetNumMomBins();
     double kstar_bin = cats->GetMomBin(kstar);
-    double xmin = 0, xmax = 30, bins = (xmax - xmin)*100;
+    double xmin = 0, xmax = 40, bins = (xmax - xmin)*100;
     double radius;
     bool divide_by_r = true;
 
@@ -833,7 +862,7 @@ void setup_epos(DLM_CleverMcLevyResoTM *MagicSource, VAR_RSM *var_rsm, int resty
 	pair{"AngleRcP1", &AngleRcP1}, pair{"AngleRcP2", &AngleRcP2}, pair{"AngleP1P2", &AngleP1P2}
     };
 
-    for (auto branch : values)
+    for (auto &branch : values)
     {
 	tntuple->SetBranchAddress(branch.first.data(), branch.second);
     }
@@ -887,7 +916,8 @@ void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, co
     cats->SetMomBins(range->Bins, range->Min, range->Max);
     if	    (!strcmp("pp", target))	{ setupper->SetUpCats_pp(*cats, POT_PP,   SOURCE, 0, 0); }
     else if (!strcmp("reid93", target)) { setupper->SetUpCats_pp(*cats, "ReidV8", SOURCE, 0, 0); }
-    else if (!strcmp("reidSC", target)) { setupper->SetUpCats_pp(*cats, "ReidSC", SOURCE, 0, 0); }
+    else if (!strcmp("reid68", target)) { setupper->SetUpCats_pp(*cats, "ReidSC", SOURCE, 0, 0); }
+    else if (!strcmp("epelbaum", target)) { setupper->SetUpCats_pp(*cats, "Applebaum", SOURCE, 0, 0); }
     else if (!strcmp("psp", target))	{ setupper->SetUpCats_pSp(*cats, POT_PS, SOURCE, 0, 0); }
     else if (!strcmp("ps0", target))	{ setupper->SetUpCats_pS0(*cats, "Chiral", SOURCE); }
     else if (!strcmp("pxm", target))	{ setupper->SetUpCats_pXim(*cats, "pXim_HALQCDPaper2020", SOURCE); }
@@ -954,7 +984,7 @@ void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, co
 	    cats->SetShortRangePotential(3, 1, fDlmPot, *cPotPars3P2);
 	}
     }
-    else if (!strcmp("reid68", target))
+    else if (!strcmp("reid68_b", target))
     {
 	CATSparameters *cats_pars = NULL;
 
@@ -1049,6 +1079,44 @@ void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, co
 	cats->SetChannelWeight(13, 3./20. * CUSP_WEIGHT);	//3D1 SN(d) -> LN(d)
 	cats->SetChannelWeight(15, 3./20. * CUSP_WEIGHT);	//3D1 SN(s) -> LN(d)
     }
+    else if (!strcmp("bonn", target))
+    {
+	auto cPars = make_unique<CATSparameters>(CATSparameters::tSource, 1, true);
+	cPars->SetParameter(0, 1.2);
+
+	cats->SetMomentumDependentSource(false);
+	cats->SetThetaDependentSource(false);
+	cats->SetAnaSource(GaussSource, *cPars);
+	cats->SetUseAnalyticSource(true);
+	cats->SetExcludeFailedBins(false);
+
+	auto cPotPars1S0 = make_unique<CATSparameters>(CATSparameters::tPotential, 4, true);
+	cPotPars1S0->SetParameter(0, 1304.76);
+	cPotPars1S0->SetParameter(1, 2.607);
+	cPotPars1S0->SetParameter(2, -113.946);
+	cPotPars1S0->SetParameter(3, 0.9397);
+
+	cats->SetQ1Q2(true);
+	cats->SetPdgId(2212, 2212);
+	cats->SetRedMass(0.5 * Mass_p);
+
+	cats->SetNumChannels(4);
+	cats->SetNumPW(0, 3);
+	cats->SetNumPW(1, 2);
+	cats->SetNumPW(2, 2);
+	cats->SetNumPW(3, 2);
+	cats->SetSpin(0, 0);
+	cats->SetSpin(1, 1);
+	cats->SetSpin(2, 1);
+	cats->SetSpin(3, 1);
+	cats->SetChannelWeight(0, 3. / 12.);
+	cats->SetChannelWeight(1, 1. / 12.);
+	cats->SetChannelWeight(2, 3. / 12.);
+	cats->SetChannelWeight(3, 5. / 12.);
+
+	auto double_gauss = [](double pars[]) { return pars[2]*exp(-pow(pars[0]*pars[3],2))+pars[4]*exp(-pow(pars[0]*pars[5],2)); };
+	cats->SetShortRangePotential(0, 0, double_gauss, *cPotPars1S0);
+    }
 
     cats->KillTheCat();
 }
@@ -1084,15 +1152,33 @@ void setup_decomp(DLM_CkDecomposition *&decomp, DLM_Ck *&ck, CATS *cats, unique_
 }
 /*----------------------*/
 
+void fix_fitter_pars(TF1 *fitter, vector<double> &parameters)
+{
+    for (size_t npar = 1; npar < parameters.size(); ++npar) fitter->FixParameter(npar, parameters[npar]);
+}
+
+void fix_global_fitter_pars(ROOT::Fit::Fitter *fitter, vector<double> &pars1, vector<double> &pars2)
+{
+    for (size_t npar = 1; npar < pars1.size(); ++npar)
+    {
+	fitter->Config().ParSettings(npar).SetValue(pars1[npar]);
+	fitter->Config().ParSettings(npar).Fix();
+    }
+
+    for (size_t npar = 1; npar < pars2.size(); ++npar)
+    {
+	fitter->Config().ParSettings(pars1.size() + npar).SetValue(pars2[npar]);
+	fitter->Config().ParSettings(pars1.size() + npar).Fix();
+    }
+}
+
 void setup_fitter(TF1 *fitter, VAR *var, double radius)
 {
-    fitter->SetParameter(0, 0.98);
-    fitter->FixParameter(1, 0.);
-    fitter->SetParameter(2, 0.);
-    fitter->SetParameter(3, 0.);
-    fitter->FixParameter(4, 0.);
-
-    if (var->bsl) fitter->FixParameter(3, 0.);
+    fitter->SetParameter(0, 1.);
+    fitter->SetParameter(1, 1.);
+    fitter->SetParameter(2, 1.);
+    fitter->FixParameter(3, 0.);
+    fitter->SetParameter(4, 1.);
 
     fitter->SetParameter(5, radius);
     fitter->SetParLimits(5, 0.4, 2);
@@ -1116,10 +1202,8 @@ void setup_global_fitter(ROOT::Fit::Fitter *fitter, VAR *var, double global_pars
     fitter->Config().ParSettings(10).SetValue(radius);
     //fitter->Config().ParSettings(10).Fix();
 
-    fitter->Config().ParSettings(1).Fix();
-    fitter->Config().ParSettings(4).Fix();
-    fitter->Config().ParSettings(6).Fix();
-    fitter->Config().ParSettings(9).Fix();
+    fitter->Config().ParSettings(3).Fix();
+    fitter->Config().ParSettings(8).Fix();
 
     fitter->Config().ParSettings(10).SetLimits(0.4, 2.0);
 
@@ -1149,9 +1233,10 @@ void create_output_default(TFile *&file, TString iname, VAR *var)
 	    var->mt, var->mult, var->fmr, var->fr, var->lam, var->bsl, var->smear);
     fname += (var->rsm)? Form("_frac%i_mass%i.root", var->frac, var->mass) : ".root";
 
-    file = new TFile(TString(var->get("settings.output").data()) + fname, "recreate");
+    string settings = (var->system == PP)? "pp." : "pl.";
+    file = new TFile(TString(var->get(settings + "output").data()) + fname, "recreate");
     printf("  \e[1;36m-->  \e[0;36mFile Created  \e[1;36m<--\e[0m\n\n");
-    cout << "  " << var->get("settings.output").data() << "\e[1;34m" << fname << "\e[0m\n\n";
+    cout << "  " << var->get(settings + "output").data() << "\e[1;34m" << fname << "\e[0m\n\n";
 }
 
 void create_output_sample(TFile *&file, TString iname, VAR *var)
@@ -1162,7 +1247,8 @@ void create_output_sample(TFile *&file, TString iname, VAR *var)
 	fname += "_stat";
     fname += Form("_mt%i_mult%i_seed%i.root", var->mt, var->mult, var->sample);
 
-    TString opath = var->get("settings.output").data();
+    string settings = (var->system == PP)? "pp." : "pl.";
+    TString opath = var->get(settings + "output").data();
 
     if (var->charge == 0) opath += "pp/";
     if (var->charge == 1) opath += "apap/";
@@ -1371,7 +1457,7 @@ void cf_fitter_pl(VAR *var)
     print_info_2(var, range_femto, range_fit);
 
     TH1F *input_cf, *input_me, *input_me_orig;
-    get_input_pl(string(var->get("settings.input") + var->get("pl.file")).data(), &input_cf, &input_me, &input_me_orig, var, var->charge);
+    get_input_pl(string(var->get("pl.input") + var->get("pl.file")).data(), &input_cf, &input_me, &input_me_orig, var, var->charge);
 
     /* CATS Setup */
     DLM_CommonAnaFunctions cats_setupper;
@@ -1583,6 +1669,8 @@ void cf_combined_fitter(VAR *var)
     DLM_CleverMcLevyResoTM *pMS_aa = (var->rsm)? &MagicSource_aa : NULL;
     VAR_RSM *pRSM = (var->rsm)? var_rsm : NULL;
     TString target = (var->rsm)? "rsm" : "pp";
+    //target = "epelbaum";
+    //target = "bonn";
 
     CATS cats_pp, cats_pl_pp, cats_ps_pp;
     setup_cats(&cats_setupper, &cats_pp,    range_femto_pp, target.Data(), pMS_pp, pRSM);
@@ -1636,13 +1724,23 @@ void cf_combined_fitter(VAR *var)
     decomp_ps_aa->Update(true, true);
 
     // Fit function
-    FitFunSimpleAvg fitfun_pp(input_cf_pp.get(), input_me_orig_pp.get(), decomp_pp);
-    FitFunSimpleAvg fitfun_aa(input_cf_aa.get(), input_me_orig_aa.get(), decomp_aa);
+    FitFunSimpleAvg fitfun_pp(input_cf_pp.get(), input_me_orig_pp.get(), decomp_pp, var->prefit);
+    FitFunSimpleAvg fitfun_aa(input_cf_aa.get(), input_me_orig_aa.get(), decomp_aa, var->prefit);
     TF1 *fitter_pp = new TF1("Fit pp",	 fitfun_pp, range_fit_pp->Min, range_fit_pp->Max, 6);
     TF1 *fitter_aa = new TF1("Fit apap", fitfun_aa, range_fit_aa->Min, range_fit_aa->Max, 6);
 
     setup_fitter(fitter_pp, var, INIT_RADIUS[var->rsm][var->mult][var->mt]);
     setup_fitter(fitter_aa, var, INIT_RADIUS[var->rsm][var->mult][var->mt]);
+
+    //vector<double> bsl_off {1, 0, 0, 0, 0};
+    //fix_fitter_pars(fitter_pp, bsl_off);
+    //fix_fitter_pars(fitter_aa, bsl_off);
+
+    if (var->prefit)
+    {
+	fix_fitter_pars(fitter_pp, fitfun_pp.prefit_pars);
+	fix_fitter_pars(fitter_aa, fitfun_aa.prefit_pars);
+    }
 
     ROOT::Fit::DataOptions opt;
     ROOT::Fit::DataRange opt_range_pp, opt_range_aa;
@@ -1665,6 +1763,9 @@ void cf_combined_fitter(VAR *var)
 
     ROOT::Fit::Fitter fitter;
     setup_global_fitter(&fitter, var, global_pars);
+    //fix_global_fitter_pars(&fitter, bsl_off, bsl_off);
+
+    if (var->prefit) fix_global_fitter_pars(&fitter, fitfun_pp.prefit_pars, fitfun_aa.prefit_pars);
 
     fitter.FitFCN(11, global_chi2, nullptr, wrap_data_pp.Size() + wrap_data_aa.Size(), true);
     ROOT::Fit::FitResult result = fitter.Result();
@@ -1723,9 +1824,11 @@ void cf_combined_fitter(VAR *var)
 
     /* create and fill histos of the total wave function for k* values */
     vector<double> wf_kstar {10, 20, 40, 80, 160};
-    unique_ptr<TH1F*[]> twave_histos (new TH1F*[wf_kstar.size()]);
+    unique_ptr<TH1F*[]> twave_histos_s (new TH1F*[wf_kstar.size()]);
+    unique_ptr<TH1F*[]> twave_histos_p (new TH1F*[wf_kstar.size()]);
     // channel 0 -> anti-symmetric wave function
-    if (var->save_tw) get_cats_totalwaves(&cats_pp, twave_histos.get(), wf_kstar, 0);
+    if (var->save_tw) get_cats_totalwaves(&cats_pp, twave_histos_s.get(), wf_kstar, 0);
+    if (var->save_tw) get_cats_totalwaves(&cats_pp, twave_histos_p.get(), wf_kstar, 1);
 
     /* create and fill histos of partial waves for given k* values */
     vector<const char*> pwaves_names = {"1S0", "3P0", "3P1", "3P2", "1D2"};
@@ -1804,12 +1907,13 @@ void cf_combined_fitter(VAR *var)
     /* save channel wave */
     if (var->save_tw)
     {
-	TDirectory *tdir_tw = ofile->mkdir("wave_funtion");
+	TDirectory *tdir_tw = ofile->mkdir("wave_function");
 	tdir_tw->cd();
 
 	for (size_t nwf = 0; nwf < wf_kstar.size(); ++nwf)
 	{
-	    twave_histos[nwf]->Write();
+	    twave_histos_s[nwf]->Write();
+	    twave_histos_p[nwf]->Write();
 	}
     }
 
@@ -1923,8 +2027,8 @@ void cf_combined_fitter_pl(VAR *var)
 
     unique_ptr<TH1F> input_cf_pp, input_me_pp, input_me_orig_pp;
     unique_ptr<TH1F> input_cf_aa, input_me_aa, input_me_orig_aa;
-    get_input_pl(string(var->get("settings.input") + var->get("pl.file")).data(), input_cf_pp, input_me_pp, input_me_orig_pp, var, PP);
-    get_input_pl(string(var->get("settings.input") + var->get("pl.file")).data(), input_cf_aa, input_me_aa, input_me_orig_aa, var, APAP);
+    get_input_pl(string(var->get("pl.input") + var->get("pl.file")).data(), input_cf_pp, input_me_pp, input_me_orig_pp, var, PP);
+    get_input_pl(string(var->get("pl.input") + var->get("pl.file")).data(), input_cf_aa, input_me_aa, input_me_orig_aa, var, APAP);
 
     DLM_CommonAnaFunctions cats_setupper;
     cats_setupper.SetCatsFilesFolder(var->get("cats.path").data());

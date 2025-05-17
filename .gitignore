@@ -1,0 +1,8 @@
+output
+CMake
+*.py
+compile.sh
+CF_FITTER
+pl_fitterRSM.cpp
+*.json
+*.ini
