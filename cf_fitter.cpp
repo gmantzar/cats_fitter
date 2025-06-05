@@ -796,7 +796,7 @@ void get_cats_potential(CATS *cats, TH1F **pot_hist, double kstar, TString targe
     (*pot_hist)->SetDirectory(0);
 }
 
-void get_cats_potentials(CATS *cats, TH1F *pot_histos[], vector<double> kstars, TString target)
+void get_cats_potentials:q!(CATS *cats, TH1F *pot_histos[], vector<double> kstars, TString target)
 {
     for (size_t nkstar = 0; nkstar < kstars.size(); ++nkstar)
     {
@@ -890,6 +890,7 @@ void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, co
     else if (!strcmp("reidSC", target)) { setupper->SetUpCats_pp(*cats, "ReidSC", SOURCE, 0, 0); }
     else if (!strcmp("psp", target))	{ setupper->SetUpCats_pSp(*cats, POT_PS, SOURCE, 0, 0); }
     else if (!strcmp("ps0", target))	{ setupper->SetUpCats_pS0(*cats, "Chiral", SOURCE); }
+    else if (!strcmp("cdbonn", target)) { setupper->SetUpCats_pp(*cats, "Chiral", SOURCE)} 
     else if (!strcmp("pxm", target))	{ setupper->SetUpCats_pXim(*cats, "pXim_HALQCDPaper2020", SOURCE); }
     else if (!strcmp("px0", target))	{ setupper->SetUpCats_pXi0(*cats, "pXim_HALQCDPaper2020", SOURCE); }
     else if (!strcmp("px1530", target)) { setupper->SetUpCats_pXim(*cats, "pXim1530", SOURCE); }
@@ -1582,7 +1583,12 @@ void cf_combined_fitter(VAR *var)
     DLM_CleverMcLevyResoTM *pMS_pp = (var->rsm)? &MagicSource_pp : NULL;
     DLM_CleverMcLevyResoTM *pMS_aa = (var->rsm)? &MagicSource_aa : NULL;
     VAR_RSM *pRSM = (var->rsm)? var_rsm : NULL;
-    TString target = (var->rsm)? "rsm" : "pp";
+    TString target = (var->rsm)? "cd_bonn" : "pp";
+
+
+    #TODO: option for CD BONN
+    #THEN edit "target" in the combined fitter
+    #THEN edit the config file
 
     CATS cats_pp, cats_pl_pp, cats_ps_pp;
     setup_cats(&cats_setupper, &cats_pp,    range_femto_pp, target.Data(), pMS_pp, pRSM);
