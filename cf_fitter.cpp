@@ -22,6 +22,7 @@
 #include "TRandom3.h"
 #include "TString.h"
 #include "TObjString.h"
+#include "TGraph.h"
 
 #include "Math/WrappedMultiTF1.h"
 #include "Fit/Fitter.h"
@@ -73,10 +74,10 @@ void baseline_fit(TH1F *histo, vector<double> &parameters, pair<double, double> 
     };
 
     // 3rd degree polynomial without 2nd degree term
-    auto cpol3 = [&](double *x, double par[]) { par[3] = 0; return npol(x, par, 3); };
+    auto cpol3 = [&](double *x, double par[]) { par[2] = 0; return npol(x, par, 3); };
 
     auto fitter = make_unique<TF1>(TF1("prefitter", cpol3, xrange.first, xrange.second, 5));
-    fitter->FixParameter(3, 0);
+    fitter->FixParameter(2, 0);
     histo->Fit(fitter.get(), "S, N, R, M");
 
     for (size_t npar = 0; npar < 5; ++npar) parameters.push_back(fitter->GetParameter(npar));
@@ -86,7 +87,18 @@ class plFitFunctionSimple
 {
     public:
 	DLM_CkDecomposition *mydecomp;
-	plFitFunctionSimple(DLM_CkDecomposition *comp) : mydecomp (comp) {}
+	TH1F *cf = nullptr;
+	bool prefit = false;
+	vector<double> prefit_pars;
+
+	plFitFunctionSimple(DLM_CkDecomposition *comp) : mydecomp(comp) {}
+
+	plFitFunctionSimple(DLM_CkDecomposition *comp, TH1F *hData, bool bsl_prefit)
+	    : mydecomp(comp), prefit(bsl_prefit)
+	{
+	    cf = static_cast<TH1F*>(hData->Clone("correlation_function"));
+	    if (prefit) baseline_fit(cf, prefit_pars, {240, 340});
+	}
 
 	double operator() (double *mom, double *par)
 	{
@@ -101,7 +113,7 @@ class plFitFunctionSimple
 	    mydecomp->GetCk()->SetSourcePar(0, radius);
 	    mydecomp->Update(false, false);
 
-	    return N*(1. + a*k + b*k*k + c*k*k*k + d*k*k*k*k) * (mydecomp->EvalCk(k));
+	    return N*(1. + a*1. + b*k + c*pow(k, 2) + d*pow(k, 3.)) * mydecomp->EvalCk(k);
 	}
 };
 
@@ -147,7 +159,7 @@ class FitFunSimpleAvg
 	    cf = static_cast<TH1F*>(hData->Clone("correlation_function"));
 	    me = static_cast<TH1F*>(hME->Clone("mixed_event"));
 
-	    if (prefit) baseline_fit(cf, prefit_pars, {240, 500});
+	    if (prefit) baseline_fit(cf, prefit_pars, {300, 500});
 	}
 
 	FitFunSimpleAvg(TH1F **hData, TH1F **hME, DLM_CkDecomposition *comp, bool bsl_prefit = false)
@@ -156,7 +168,7 @@ class FitFunSimpleAvg
 	    cf = static_cast<TH1F*>((*hData)->Clone("correlation_function"));
 	    me = static_cast<TH1F*>((*hME)->Clone("mixed_event"));
 
-	    if (prefit) baseline_fit(cf, prefit_pars, {240, 500});
+	    if (prefit) baseline_fit(cf, prefit_pars, {240, 400});
 	}
 
 	double operator() (double *mom, double *par)
@@ -681,17 +693,14 @@ void get_corrected_cf(TH1F *cfs[], TH1F *lambdas[], double bsl_pars[], TH1F **co
 /*----------------------------*/
 
 /* CATS getter functions for wave histos */
-void get_cats_totalwave(CATS *cats, TH1F **container, double kstar, int spin)
+void get_cats_totalwave(CATS *cats, TH1F **container, double kstar, int channel)
 {
-    int channel = 0;
-    if (spin) channel = 1;
-
     //unsigned bins = cats->GetNumMomBins();
     double kstar_bin = cats->GetMomBin(kstar);
     double xmin = 0, xmax = 30, bins = (xmax - xmin)*100;
     double radius;
 
-    TString title = TString("hTotalWF_channel") + channel + "_" + static_cast<int>(kstar) + "mev";
+    TString title = TString("hTotalWF_spin") + channel + "_" + static_cast<int>(kstar) + "mev";
     auto histo = make_unique<TH1F>(title, title, bins, xmin, xmax);
     for (size_t nbin = 0; nbin < bins; ++nbin)
     {
@@ -703,11 +712,11 @@ void get_cats_totalwave(CATS *cats, TH1F **container, double kstar, int spin)
     (*container)->SetDirectory(0);
 }
 
-void get_cats_totalwaves(CATS *cats, TH1F *container[], vector<double> kstars, int spin)
+void get_cats_totalwaves(CATS *cats, TH1F *container[], vector<double> kstars, int channel)
 {
     for (size_t nkstar = 0; nkstar < kstars.size(); ++nkstar)
     {
-	get_cats_totalwave(cats, &container[nkstar], kstars[nkstar], spin);
+	get_cats_totalwave(cats, &container[nkstar], kstars[nkstar], channel);
     }
 }
 
@@ -728,7 +737,9 @@ void get_cats_radialwave(CATS *cats, TH1F **container, double kstar, TString tar
 
     //unsigned bins = cats->GetNumMomBins();
     double kstar_bin = cats->GetMomBin(kstar);
-    double xmin = 0, xmax = 40, bins = (xmax - xmin)*100;
+    double bin_width = 0.1;
+    double xmin = 0, xmax = 24;
+    double bins = (xmax - xmin) / bin_width;
     double radius;
     bool divide_by_r = true;
 
@@ -751,6 +762,89 @@ void get_cats_radialwaves(CATS *cats, TH1F *container[], vector<double> kstars, 
     for (size_t nkstar = 0; nkstar < kstars.size(); ++nkstar)
     {
 	get_cats_radialwave(cats, &container[nkstar], kstars[nkstar], target, dimension);
+    }
+}
+
+void get_cats_radialwave_epelbaum(CATS *cats, TH1F **container, double kstar, TString target, TString dimension)
+{
+    int channel = 0, part_wave = 0;
+    if	    (!strcmp("1S0", target)) { part_wave = 0; channel = 0; }
+    else if (!strcmp("1P1", target)) { part_wave = 1; channel = 0; }
+    else if (!strcmp("1D2", target)) { part_wave = 2; channel = 0; }
+    else if (!strcmp("3P0", target)) { part_wave = 1; channel = 1; }
+    else if (!strcmp("3P1", target)) { part_wave = 1; channel = 4; }
+    else if (!strcmp("3P2", target)) { part_wave = 1; channel = 7; }
+    else    out("Partial Wave \"" << target << "\" not supported!");
+
+    int dim = 1;
+    if (!strcmp("re",	dimension)) dim = 0;
+    if (!strcmp("real",	dimension)) dim = 0;
+
+    //unsigned bins = cats->GetNumMomBins();
+    double kstar_bin = cats->GetMomBin(kstar);
+    double bin_width = 0.1;
+    double xmin = 0, xmax = 200;
+    double bins = (xmax - xmin) / bin_width;
+    double radius;
+    bool divide_by_r = true;
+
+    TString title = TString("hRadialWF_") + target + "_" + static_cast<int>(kstar) + "mev";
+    auto histo = make_unique<TH1F>(title, title, bins, xmin, xmax);
+    for (size_t nbin = 0; nbin < bins; ++nbin)
+    {
+	radius = histo->GetBinCenter(nbin);
+
+	//if (dim) histo->SetBinContent(nbin, cats->EvalRadialWaveFunction(kstar_bin, channel, part_wave, radius, divide_by_r).imag());
+	//else	 histo->SetBinContent(nbin, cats->EvalRadialWaveFunction(kstar_bin, chanonel, part_wave, radius, divide_by_r).real());
+	histo->SetBinContent(nbin, cats->EvalRadialWaveFunction(kstar_bin, channel, part_wave, radius, divide_by_r).real());
+    }
+
+    *container = static_cast<TH1F*>(histo->Clone());
+    (*container)->SetDirectory(0);
+}
+
+void get_cats_radialwaves_epelbaum(CATS *cats, TH1F *container[], vector<double> kstars, TString target, TString dimension)
+{
+    for (size_t nkstar = 0; nkstar < kstars.size(); ++nkstar)
+    {
+	get_cats_radialwave_epelbaum(cats, &container[nkstar], kstars[nkstar], target, dimension);
+    }
+}
+
+void get_cats_phaseshift_epelbaum(CATS *cats, TH1F **container, TString target, double xmin, double xmax)
+{
+    int channel = 0, part_wave = 0;
+    if	    (!strcmp("1S0", target)) { part_wave = 0; channel = 0; }
+    else if (!strcmp("1P1", target)) { part_wave = 1; channel = 0; }
+    else if (!strcmp("1D2", target)) { part_wave = 2; channel = 0; }
+    else if (!strcmp("3P0", target)) { part_wave = 1; channel = 1; }
+    else if (!strcmp("3P1", target)) { part_wave = 1; channel = 4; }
+    else if (!strcmp("3P2", target)) { part_wave = 1; channel = 7; }
+    else    out("Partial Wave \"" << target << "\" not supported!");
+
+    //unsigned bins = cats->GetNumMomBins();
+    double bin_width = 0.1;
+    double bins = (xmax - xmin) / bin_width;
+    double momentum;
+
+    TString title = TString("hPhase_") + target;
+    auto histo = make_unique<TH1F>(title, title, bins, xmin, xmax);
+    for (size_t nbin = 0; nbin < bins; ++nbin)
+    {
+	momentum = histo->GetBinCenter(nbin + 1);
+	histo->SetBinContent(nbin + 1, 180. / TMath::Pi() * cats->EvalPhaseShift(momentum, channel, part_wave));
+    }
+
+    *container = static_cast<TH1F*>(histo->Clone());
+    (*container)->SetDirectory(0);
+}
+
+template <typename T>
+void get_cats_phaseshifts_epelbaum(CATS *cats, TH1F *container[], vector<T> targets, double xmin, double xmax)
+{
+    for (size_t ntarget = 0; ntarget < targets.size(); ++ntarget)
+    {
+	get_cats_phaseshift_epelbaum(cats, &container[ntarget], targets[ntarget], xmin, xmax);
     }
 }
 
@@ -1157,6 +1251,11 @@ void fix_fitter_pars(TF1 *fitter, vector<double> &parameters)
     for (size_t npar = 1; npar < parameters.size(); ++npar) fitter->FixParameter(npar, parameters[npar]);
 }
 
+void fix_fitter_radius(TF1 *fitter, double radius)
+{
+    fitter->FixParameter(6, radius);
+}
+
 void fix_global_fitter_pars(ROOT::Fit::Fitter *fitter, vector<double> &pars1, vector<double> &pars2)
 {
     for (size_t npar = 1; npar < pars1.size(); ++npar)
@@ -1172,12 +1271,18 @@ void fix_global_fitter_pars(ROOT::Fit::Fitter *fitter, vector<double> &pars1, ve
     }
 }
 
+void fix_global_fitter_radius(ROOT::Fit::Fitter *fitter, double radius)
+{
+    fitter->Config().ParSettings(10).SetValue(radius);
+    fitter->Config().ParSettings(10).Fix();
+}
+
 void setup_fitter(TF1 *fitter, VAR *var, double radius)
 {
     fitter->SetParameter(0, 1.);
     fitter->SetParameter(1, 1.);
-    fitter->SetParameter(2, 1.);
-    fitter->FixParameter(3, 0.);
+    fitter->FixParameter(2, 0.);
+    fitter->SetParameter(3, 1.);
     fitter->SetParameter(4, 1.);
 
     fitter->SetParameter(5, radius);
@@ -1202,8 +1307,8 @@ void setup_global_fitter(ROOT::Fit::Fitter *fitter, VAR *var, double global_pars
     fitter->Config().ParSettings(10).SetValue(radius);
     //fitter->Config().ParSettings(10).Fix();
 
-    fitter->Config().ParSettings(3).Fix();
-    fitter->Config().ParSettings(8).Fix();
+    fitter->Config().ParSettings(2).Fix();
+    fitter->Config().ParSettings(7).Fix();
 
     fitter->Config().ParSettings(10).SetLimits(0.4, 2.0);
 
@@ -1211,14 +1316,6 @@ void setup_global_fitter(ROOT::Fit::Fitter *fitter, VAR *var, double global_pars
     {
 	if (n == 5) continue;
 	fitter->Config().ParSettings(n).SetLimits(-1., 2.);
-    }
-
-    if (var->bsl)
-    {
-	fitter->Config().ParSettings(3).SetValue(0);
-	fitter->Config().ParSettings(8).SetValue(0);
-	fitter->Config().ParSettings(3).Fix();
-	fitter->Config().ParSettings(8).Fix();
     }
 
     fitter->Config().MinimizerOptions().SetPrintLevel(0);
@@ -1671,6 +1768,9 @@ void cf_combined_fitter(VAR *var)
     TString target = (var->rsm)? "rsm" : "pp";
     //target = "epelbaum";
     //target = "bonn";
+    //target = "av18_s";
+    //target = "reid93";
+    //target = "reid68";
 
     CATS cats_pp, cats_pl_pp, cats_ps_pp;
     setup_cats(&cats_setupper, &cats_pp,    range_femto_pp, target.Data(), pMS_pp, pRSM);
@@ -1736,6 +1836,9 @@ void cf_combined_fitter(VAR *var)
     //fix_fitter_pars(fitter_pp, bsl_off);
     //fix_fitter_pars(fitter_aa, bsl_off);
 
+    //fix_fitter_radius(fitter_pp, 1.10809);
+    //fix_fitter_radius(fitter_aa, 1.10809);
+
     if (var->prefit)
     {
 	fix_fitter_pars(fitter_pp, fitfun_pp.prefit_pars);
@@ -1764,6 +1867,7 @@ void cf_combined_fitter(VAR *var)
     ROOT::Fit::Fitter fitter;
     setup_global_fitter(&fitter, var, global_pars);
     //fix_global_fitter_pars(&fitter, bsl_off, bsl_off);
+    //fix_global_fitter_radius(&fitter, 1.10809);
 
     if (var->prefit) fix_global_fitter_pars(&fitter, fitfun_pp.prefit_pars, fitfun_aa.prefit_pars);
 
@@ -1837,13 +1941,22 @@ void cf_combined_fitter(VAR *var)
     for (size_t npwave = 0; npwave < pwaves_names.size(); ++npwave)
     {
 	pwaves_histos[npwave] = make_unique<TH1F*[]>(pwaves_kstars.size());
-	get_cats_radialwaves(&cats_pp, pwaves_histos[npwave].get(), pwaves_kstars, pwaves_names[npwave], "real");
+	if (target == "epelbaum")
+	    get_cats_radialwaves_epelbaum(&cats_pp, pwaves_histos[npwave].get(), pwaves_kstars, pwaves_names[npwave], "real");
+	else
+	    get_cats_radialwaves(&cats_pp, pwaves_histos[npwave].get(), pwaves_kstars, pwaves_names[npwave], "real");
     }
 
     /* create and fill histos of phaseshifts */
     vector<const char*> phase_names = {"1S0", "3P0", "3P1", "3P2", "1D2"};
     unique_ptr<TH1F*[]> phase_histos (new TH1F*[phase_names.size()]);
-    if (var->save_ps) get_cats_phaseshifts(&cats_pp, phase_histos.get(), phase_names, range_femto_pp->Min, range_femto_pp->Max);
+    if (var->save_ps)
+    {
+	if (target == "epelbaum")
+	    get_cats_phaseshifts_epelbaum(&cats_pp, phase_histos.get(), phase_names, range_femto_pp->Min, range_femto_pp->Max);
+	else
+	    get_cats_phaseshifts(&cats_pp, phase_histos.get(), phase_names, range_femto_pp->Min, range_femto_pp->Max);
+    }
 
     /* create and fill histos of potentials for partial waves */
     vector<const char*> pot_names = {"1S0", "3P0", "3P1", "3P2", "1D2"};

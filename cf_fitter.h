@@ -40,8 +40,8 @@ static const int fmr_ent = 3;
 
 static const vector<TString> str_mult_bins {"0.0-10.0", "10.0-50.0", "50.0-100.0"};
 
-//static const vector<TString> str_mt_bins_pl {"1.08-1.26", "1.26-1.32", "1.32-1.44", "1.44-1.65", "1.65-1.9", "1.9-4.5"};
-static const vector<TString> str_mt_bins_pl {"1.02-1.14", "1.14-1.2", "1.2-1.26", "1.26-1.38", "1.38-1.56", "1.56-1.86", "1.86-6"};
+static const vector<TString> str_mt_bins_pl {"1.08-1.26", "1.26-1.32", "1.32-1.44", "1.44-1.65", "1.65-1.9", "1.9-4.5"};
+//static const vector<TString> str_mt_bins_pl {"1.02-1.14", "1.14-1.2", "1.2-1.26", "1.26-1.38", "1.38-1.56", "1.56-1.86", "1.86-6"};
 
 static const vector<TString> str_mt_bins_pp {"1.02-1.14", "1.14-1.2", "1.2-1.26", "1.26-1.38", "1.38-1.56", "1.56-1.86", "1.86-2.4"};
 
@@ -256,5 +256,6 @@ void cf_fitter(VAR*);
 void cf_fitter_pl(VAR*);
 void cf_combined_fitter(VAR*);
 void cf_combined_fitter_pl(VAR*);
+void pp_asymptotic_check_Epelbaum_v1();
 
 #endif

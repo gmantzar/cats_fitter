@@ -5,6 +5,7 @@
 
 #include "cf_fitter.h"
 
+
 int main(int argc, char *argv[])
 {
     VAR vars;
@@ -48,3 +49,10 @@ int main(int argc, char *argv[])
     printf("  \e[1;36m-->  \e[0;36mFitter finished!  \e[1;36m<--\e[0m\n\n");
     return 0;
 }
+
+/*
+int main()
+{
+    pp_asymptotic_check_Epelbaum_v1();
+}
+*/
