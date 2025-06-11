@@ -315,19 +315,28 @@ void gev_to_mev(unique_ptr<TH1F> &hist)
     }
 }
 
-string get_input_filename(VAR *var)
+string settings_filename(VAR *var)
 {
     string file = "";
     switch (var->system)
     {
-	case PP:
-	    file = var->get("pp.input") + var->get("pp.file"); break;
-	case PL:
-	    file = var->get("pl.input") + var->get("pl.file"); break;
+	case PP: file = var->get("pp.input") + var->get("pp.file"); break;
+	case PL: file = var->get("pl.input") + var->get("pl.file"); break;
 	default:
 	    cerr << "Error: Missing Input Histograms!" << endl;
     }
     return file;
+}
+
+string settings_potential(VAR *var)
+{
+    string potential = "";
+    switch (var->system)
+    {
+	case PP: potential = var->get("pp.potential"); break;
+	case PL: potential = var->get("pl.potential"); break;
+    }
+    return potential;
 }
 
 string transform_lower(string s)
@@ -1005,19 +1014,40 @@ void setup_rsm_pl(DLM_CleverMcLevyResoTM *MagicSource, VAR_RSM *var_rsm)
     setup_epos(MagicSource, var_rsm, RR, var_rsm->epos + "EposDisto_pReso_LamReso.root");
 }
 
-void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, const char *target, DLM_CleverMcLevyResoTM *MagicSource, VAR_RSM *var_rsm)
+void setup_rsm(DLM_CleverMcLevyResoTM *MagicSource, VAR *var, VAR_RSM *var_rsm)
 {
+    switch (var->system)
+    {
+	case PP: setup_rsm_pp(MagicSource, var_rsm); break;
+	case PL: setup_rsm_pl(MagicSource, var_rsm); break;
+    }
+}
+
+template <typename T>
+void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, T t_target, VAR *var, DLM_CleverMcLevyResoTM *MagicSource, VAR_RSM *var_rsm)
+{
+    TString target = t_target;
+    TString source = "Gauss";
     cats->SetMomBins(range->Bins, range->Min, range->Max);
-    if	    (!strcmp("pp", target))	{ setupper->SetUpCats_pp(*cats, POT_PP,   SOURCE, 0, 0); }
-    else if (!strcmp("reid93", target)) { setupper->SetUpCats_pp(*cats, "ReidV8", SOURCE, 0, 0); }
-    else if (!strcmp("reid68", target)) { setupper->SetUpCats_pp(*cats, "ReidSC", SOURCE, 0, 0); }
-    else if (!strcmp("epelbaum", target)) { setupper->SetUpCats_pp(*cats, "Applebaum", SOURCE, 0, 0); }
-    else if (!strcmp("psp", target))	{ setupper->SetUpCats_pSp(*cats, POT_PS, SOURCE, 0, 0); }
-    else if (!strcmp("ps0", target))	{ setupper->SetUpCats_pS0(*cats, "Chiral", SOURCE); }
-    else if (!strcmp("pxm", target))	{ setupper->SetUpCats_pXim(*cats, "pXim_HALQCDPaper2020", SOURCE); }
-    else if (!strcmp("px0", target))	{ setupper->SetUpCats_pXi0(*cats, "pXim_HALQCDPaper2020", SOURCE); }
-    else if (!strcmp("px1530", target)) { setupper->SetUpCats_pXim(*cats, "pXim1530", SOURCE); }
-    else if (strstr(target, "av18"))
+    if (var != NULL && var->rsm)
+    {
+	source = "";
+	setup_rsm(MagicSource, var, var_rsm);
+	cats->SetAnaSource(CatsSourceForwarder, MagicSource, 2);
+	cats->SetAnaSource(0, 1.0);
+	cats->SetAnaSource(1, 2.0);
+	cats->SetUseAnalyticSource(true);
+    }
+    if	    (target == "pp")		{ setupper->SetUpCats_pp(  *cats, "AV18",   source, 0, 0); }
+    else if (target == "reid93")	{ setupper->SetUpCats_pp(  *cats, "ReidV8", source, 0, 0); }
+    else if (target == "reid68")	{ setupper->SetUpCats_pp(  *cats, "ReidSC", source, 0, 0); }
+    else if (target == "epelbaum")	{ setupper->SetUpCats_pp(  *cats, "Applebaum", source, 0, 0); }
+    else if (target == "psp")		{ setupper->SetUpCats_pSp( *cats, "DG_NLO19", source, 0, 0); }
+    else if (target == "ps0")		{ setupper->SetUpCats_pS0( *cats, "Chiral", source); }
+    else if (target == "pxm")		{ setupper->SetUpCats_pXim(*cats, "pXim_HALQCDPaper2020", source); }
+    else if (target == "px0")		{ setupper->SetUpCats_pXi0(*cats, "pXim_HALQCDPaper2020", source); }
+    else if (target == "px1530")	{ setupper->SetUpCats_pXim(*cats, "pXim1530", source); }
+    else if (strstr(target.Data(), "av18"))
     {
 	auto cPars = make_unique<CATSparameters>(CATSparameters::tSource, 1, true);
 	cPars->SetParameter(0, 1.2);
@@ -1069,16 +1099,16 @@ void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, co
 	    cats->SetChannelWeight(3, 5. / 12.);
 	}
 
-	if (strstr(target, "av18_s"))
+	if (strstr(target.Data(), "av18_s"))
 	    cats->SetShortRangePotential(0, 0, fDlmPot, *cPotPars1S0);
-	if (strstr(target, "av18_sp"))
+	if (strstr(target.Data(), "av18_sp"))
 	{
 	    cats->SetShortRangePotential(1, 1, fDlmPot, *cPotPars3P0);
 	    cats->SetShortRangePotential(2, 1, fDlmPot, *cPotPars3P1);
 	    cats->SetShortRangePotential(3, 1, fDlmPot, *cPotPars3P2);
 	}
     }
-    else if (!strcmp("reid68_b", target))
+    else if (target == "reid68_b")
     {
 	CATSparameters *cats_pars = NULL;
 
@@ -1140,40 +1170,16 @@ void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, co
 	if (cPotPars3P1) cats->SetShortRangePotential(2, 1, fDlmPot, *cPotPars3P1);
 	if (cPotPars3P2) cats->SetShortRangePotential(3, 1, fDlmPot, *cPotPars3P2);
     }
-    else if (!strcmp("rsm", target))
+    else if (target == "pl")
     {
-	setup_rsm_pp(MagicSource, var_rsm);
-	cats->SetAnaSource(CatsSourceForwarder, MagicSource, 2);
-	cats->SetAnaSource(0, 1.0);
-	cats->SetAnaSource(1, 2.0);
-	cats->SetUseAnalyticSource(true);
-	setupper->SetUpCats_pp(*cats, POT_PP, "", 0, 0);
-    }
-    else if (!strcmp("pl", target))
-    {
-	setupper->SetUpCats_pL(*cats, POT_PL, SOURCE, 11600, 0);
+	setupper->SetUpCats_pL(*cats, "Chiral_Coupled_SPD", source, 11600, 0);
 	cats->SetChannelWeight( 7,  1./4. * CUSP_WEIGHT);	//1S0 SN(s) -> LN(s)
 	cats->SetChannelWeight( 8,  3./4. * CUSP_WEIGHT);	//3S1 SN(s) -> LN(s)
 	cats->SetChannelWeight(10,  3./4. * CUSP_WEIGHT);	//3S1 SN(d) -> LN(s)
 	cats->SetChannelWeight(13, 3./20. * CUSP_WEIGHT);	//3D1 SN(d) -> LN(d)
 	cats->SetChannelWeight(15, 3./20. * CUSP_WEIGHT);	//3D1 SN(s) -> LN(d)
     }
-    else if (!strcmp("plrsm", target))
-    {
-	setup_rsm_pl(MagicSource, var_rsm);
-	cats->SetAnaSource(CatsSourceForwarder, MagicSource, 2);
-	cats->SetAnaSource(0, 1.0);
-	cats->SetAnaSource(1, 2.0);
-	cats->SetUseAnalyticSource(true);
-
-	setupper->SetUpCats_pL(*cats, POT_PL, "", 11600, 0);
-	cats->SetChannelWeight( 7,  1./4. * CUSP_WEIGHT);	//1S0 SN(s) -> LN(s)
-	cats->SetChannelWeight( 8,  3./4. * CUSP_WEIGHT);	//3S1 SN(s) -> LN(s)
-	cats->SetChannelWeight(10,  3./4. * CUSP_WEIGHT);	//3S1 SN(d) -> LN(s)
-	cats->SetChannelWeight(13, 3./20. * CUSP_WEIGHT);	//3D1 SN(d) -> LN(d)
-	cats->SetChannelWeight(15, 3./20. * CUSP_WEIGHT);	//3D1 SN(s) -> LN(d)
-    }
-    else if (!strcmp("bonn", target))
+    else if (target == "bonn")
     {
 	auto cPars = make_unique<CATSparameters>(CATSparameters::tSource, 1, true);
 	cPars->SetParameter(0, 1.2);
@@ -1215,9 +1221,16 @@ void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, co
     cats->KillTheCat();
 }
 
-void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, const char *target)
+template <typename T>
+void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, T target, VAR *var)
 {
-    setup_cats(setupper, cats, range, target, NULL, NULL);
+    setup_cats(setupper, cats, range, target, var, nullptr, nullptr);
+}
+
+template <typename T>
+void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, T target)
+{
+    setup_cats(setupper, cats, range, target, nullptr, nullptr, nullptr);
 }
 
 void setup_decomp(DLM_CkDecomposition *&decomp, DLM_Ck *&ck, CATS *cats, TH2F *res_matrix, VAR_FMR *range, const char *target)
@@ -1389,7 +1402,7 @@ void cf_fitter(VAR *var)
     print_info_2(var, range_femto, range_fit);
 
     unique_ptr<TH1F> input_cf, input_me, input_me_orig;
-    get_input(get_input_filename(var), input_cf, input_me, input_me_orig, var, PP);
+    get_input(settings_filename(var), input_cf, input_me, input_me_orig, var, PP);
 
     unique_ptr<TH1F*> uptr_lambda_pars_th1 (new TH1F*[5]);
     auto lambda_pars_th1 = static_cast<TH1F**>(uptr_lambda_pars_th1.get());
@@ -1413,10 +1426,9 @@ void cf_fitter(VAR *var)
     DLM_CleverMcLevyResoTM MagicSource;
     DLM_CleverMcLevyResoTM *pMS = (var->rsm)? &MagicSource : NULL;
     VAR_RSM *pRSM = (var->rsm)? var_rsm : NULL;
-    TString target = (var->rsm)? "rsm" : "pp";
 
     CATS cats_pp, cats_pl, cats_ps;
-    setup_cats(&cats_setupper, &cats_pp, range_femto, target.Data(), pMS, pRSM);
+    setup_cats(&cats_setupper, &cats_pp, range_femto, settings_potential(var), var, pMS, pRSM);
     setup_cats(&cats_setupper, &cats_pl, range_femto, "pl");
     setup_cats(&cats_setupper, &cats_ps, range_femto, "psp");
 
@@ -1736,8 +1748,8 @@ void cf_combined_fitter(VAR *var)
 
     unique_ptr<TH1F> input_cf_pp, input_me_pp, input_me_orig_pp;
     unique_ptr<TH1F> input_cf_aa, input_me_aa, input_me_orig_aa;
-    get_input(get_input_filename(var), input_cf_pp, input_me_pp, input_me_orig_pp, var, PP);
-    get_input(get_input_filename(var), input_cf_aa, input_me_aa, input_me_orig_aa, var, APAP);
+    get_input(settings_filename(var), input_cf_pp, input_me_pp, input_me_orig_pp, var, PP);
+    get_input(settings_filename(var), input_cf_aa, input_me_aa, input_me_orig_aa, var, APAP);
 
     unique_ptr<TH1F*[]> lambda_pars_pp_th1 (new TH1F*[5]);
     unique_ptr<TH1F*[]> lambda_pars_aa_th1 (new TH1F*[5]);
@@ -1762,23 +1774,18 @@ void cf_combined_fitter(VAR *var)
     unique_ptr<TH2F> matrix_ps_dec (cats_setupper.GetResidualMatrix("pp", "pSigmaPlus"));
 
     DLM_CleverMcLevyResoTM MagicSource_pp, MagicSource_aa;
-    DLM_CleverMcLevyResoTM *pMS_pp = (var->rsm)? &MagicSource_pp : NULL;
-    DLM_CleverMcLevyResoTM *pMS_aa = (var->rsm)? &MagicSource_aa : NULL;
-    VAR_RSM *pRSM = (var->rsm)? var_rsm : NULL;
-    TString target = (var->rsm)? "rsm" : "pp";
-    //target = "epelbaum";
-    //target = "bonn";
-    //target = "av18_s";
-    //target = "reid93";
-    //target = "reid68";
+    DLM_CleverMcLevyResoTM *pMS_pp = (var->rsm)? &MagicSource_pp : nullptr;
+    DLM_CleverMcLevyResoTM *pMS_aa = (var->rsm)? &MagicSource_aa : nullptr;
+    VAR_RSM *pRSM = (var->rsm)? var_rsm : nullptr;
+    TString target = settings_potential(var);
 
     CATS cats_pp, cats_pl_pp, cats_ps_pp;
-    setup_cats(&cats_setupper, &cats_pp,    range_femto_pp, target.Data(), pMS_pp, pRSM);
+    setup_cats(&cats_setupper, &cats_pp,    range_femto_pp, target, var, pMS_pp, pRSM);
     setup_cats(&cats_setupper, &cats_pl_pp, range_femto_pp, "pl");
     setup_cats(&cats_setupper, &cats_ps_pp, range_femto_pp, "psp");
 
     CATS cats_aa, cats_pl_aa, cats_ps_aa;
-    setup_cats(&cats_setupper, &cats_aa,    range_femto_aa, target.Data(), pMS_aa, pRSM);
+    setup_cats(&cats_setupper, &cats_aa,    range_femto_aa, target, var, pMS_aa, pRSM);
     setup_cats(&cats_setupper, &cats_pl_aa, range_femto_aa, "pl");
     setup_cats(&cats_setupper, &cats_ps_aa, range_femto_aa, "psp");
 
@@ -2155,17 +2162,17 @@ void cf_combined_fitter_pl(VAR *var)
     DLM_CleverMcLevyResoTM *pMS_pp = (var->rsm)? &MagicSource_pp : NULL;
     DLM_CleverMcLevyResoTM *pMS_aa = (var->rsm)? &MagicSource_aa : NULL;
     VAR_RSM *pRSM = (var->rsm)? var_rsm : NULL;
-    TString target = (var->rsm)? "plrsm" : "pl";
+    TString target = settings_potential(var);
 
     /* CATS Objects */
     CATS cats_pl_pp, cats_ps0_pp, cats_px0_pp, cats_pxm_pp;
-    setup_cats(&cats_setupper, &cats_pl_pp,  range_femto_pp, target.Data(), pMS_pp, pRSM);
+    setup_cats(&cats_setupper, &cats_pl_pp,  range_femto_pp, target, var, pMS_pp, pRSM);
     setup_cats(&cats_setupper, &cats_ps0_pp, range_femto_pp, "ps0");
     setup_cats(&cats_setupper, &cats_px0_pp, range_femto_pp, "px0");
     setup_cats(&cats_setupper, &cats_pxm_pp, range_femto_pp, "pxm");
 
     CATS cats_pl_aa, cats_ps0_aa, cats_px0_aa, cats_pxm_aa;
-    setup_cats(&cats_setupper, &cats_pl_aa,  range_femto_aa, target.Data(), pMS_pp, pRSM);
+    setup_cats(&cats_setupper, &cats_pl_aa,  range_femto_aa, target, var, pMS_pp, pRSM);
     setup_cats(&cats_setupper, &cats_ps0_aa, range_femto_aa, "ps0");
     setup_cats(&cats_setupper, &cats_px0_aa, range_femto_aa, "px0");
     setup_cats(&cats_setupper, &cats_pxm_aa, range_femto_aa, "pxm");
