@@ -1,3 +1,4 @@
 #!/bin/bash
 
-/home/ktas/ge34zez/cats_fitter/CF_FITTER $@
+/Users/georgios/femto/pprun3/cats_fitter/CMake/bin/CF_FITTER $@
+#/home/ktas/ge34zez/cats_fitter/CF_FITTER $@

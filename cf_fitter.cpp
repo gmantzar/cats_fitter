@@ -1028,6 +1028,8 @@ void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, T 
 {
     TString target = t_target;
     TString source = "Gauss";
+    cout<<target<<endl;
+    //target = "av18";
     cats->SetMomBins(range->Bins, range->Min, range->Max);
     if (var != NULL && var->rsm)
     {
@@ -1218,6 +1220,7 @@ void setup_cats(DLM_CommonAnaFunctions *setupper, CATS *cats, VAR_FMR *range, T 
 	cats->SetShortRangePotential(0, 0, double_gauss, *cPotPars1S0);
     }
 
+    cout<<"GG: Killing the Cat"<<endl;
     cats->KillTheCat();
 }
 
@@ -1429,14 +1432,23 @@ void cf_fitter(VAR *var)
 
     CATS cats_pp, cats_pl, cats_ps;
     setup_cats(&cats_setupper, &cats_pp, range_femto, settings_potential(var), var, pMS, pRSM);
+    cout<<"Starting setup_cats"<<endl;
+    setup_cats(&cats_setupper, &cats_pp, range_femto, target.Data(), pMS, pRSM);
+    cout<<"GG: Done (1)"<<endl;
     setup_cats(&cats_setupper, &cats_pl, range_femto, "pl");
+    cout<<"GG: Done (2)"<<endl;
     setup_cats(&cats_setupper, &cats_ps, range_femto, "psp");
+    cout<<"GG: Done (3)"<<endl;
 
     DLM_Ck *ck_pp, *ck_pl, *ck_ps;
+    cout<<"alive 0"<<endl;
     DLM_CkDecomposition *decomp_pp, *decomp_pl, *decomp_ps;
     setup_decomp(decomp_pp, ck_pp, &cats_pp, matrix_pp_res, range_femto, "pp");
+    cout<<"GG: decomp Done (1)"<<endl;
     setup_decomp(decomp_pl, ck_pl, &cats_pl, matrix_pl_res, range_femto, "ppl");
+    cout<<"GG: decomp Done (2)"<<endl;
     setup_decomp(decomp_ps, ck_ps, &cats_ps, matrix_pl_res, range_femto, "psp");
+    cout<<"GG: decomp Done (3)"<<endl;
 
     // non-genuine contributions to pp
     decomp_pp->AddContribution(0, *lambda_pars[1], DLM_CkDecomp::cFeedDown, decomp_pl, matrix_pl_dec);
@@ -1446,6 +1458,7 @@ void cf_fitter(VAR *var)
     decomp_pp->AddPhaseSpace(input_me.get());
     decomp_pp->AddPhaseSpace(0, input_me.get());
 
+    cout<<"alive 1"<<endl;
     // non-genuine contributions to pL
     decomp_pl->AddContribution(0, LAM_PL_FLAT, DLM_CkDecomp::cFeedDown);
 
@@ -1778,23 +1791,33 @@ void cf_combined_fitter(VAR *var)
     DLM_CleverMcLevyResoTM *pMS_aa = (var->rsm)? &MagicSource_aa : nullptr;
     VAR_RSM *pRSM = (var->rsm)? var_rsm : nullptr;
     TString target = settings_potential(var);
+    target = "pp";
+    //target = "av18_s";
+    //target = "bonn";
+    //target = "av18_s";
+    //target = "reid93";
+    //target = "reid68";
 
+    cout<<"alive 0"<<endl;
     CATS cats_pp, cats_pl_pp, cats_ps_pp;
     setup_cats(&cats_setupper, &cats_pp,    range_femto_pp, target, var, pMS_pp, pRSM);
     setup_cats(&cats_setupper, &cats_pl_pp, range_femto_pp, "pl");
     setup_cats(&cats_setupper, &cats_ps_pp, range_femto_pp, "psp");
 
+    cout<<"alive 1"<<endl;
     CATS cats_aa, cats_pl_aa, cats_ps_aa;
     setup_cats(&cats_setupper, &cats_aa,    range_femto_aa, target, var, pMS_aa, pRSM);
     setup_cats(&cats_setupper, &cats_pl_aa, range_femto_aa, "pl");
     setup_cats(&cats_setupper, &cats_ps_aa, range_femto_aa, "psp");
 
+    cout<<"alive 2"<<endl;
     DLM_Ck *ck_pp, *ck_pl_pp, *ck_ps_pp;
     DLM_CkDecomposition *decomp_pp, *decomp_pl_pp, *decomp_ps_pp;
     setup_decomp(decomp_pp,    ck_pp,	 &cats_pp,    matrix_pp_res, range_femto_pp, "pp");
     setup_decomp(decomp_pl_pp, ck_pl_pp, &cats_pl_aa, matrix_pl_res, range_femto_pp, "ppl");
     setup_decomp(decomp_ps_pp, ck_ps_pp, &cats_ps_aa, matrix_pl_res, range_femto_pp, "psp");
 
+    cout<<"alive 3"<<endl;
     DLM_Ck *ck_aa, *ck_pl_aa, *ck_ps_aa;
     DLM_CkDecomposition *decomp_aa, *decomp_pl_aa, *decomp_ps_aa;
     setup_decomp(decomp_aa,    ck_aa,	 &cats_aa,    matrix_aa_res, range_femto_aa, "pp");

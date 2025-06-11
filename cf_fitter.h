@@ -143,7 +143,7 @@ set_vars(int argc, char *argv[], VAR *var)
     if (argc > 1) read_config_file(argc, argv, var);
     if (argc > 2) var->system = atoi(argv[2]);
     if (argc > 3) var->charge = atoi(argv[3]);
-    if (argc > 4) var->sample = atoi(argv[4]);
+    if (argc > 4) var->sample = atoi(argv[4]); // seed for the sampling (0 = no sampling, any other integer=)
     if (argc > 5) var->stat   = atoi(argv[5]);
     if (argc > 6) var->rsm    = atoi(argv[6]);
     if (argc > 7) var->mt     = atoi(argv[7]);
