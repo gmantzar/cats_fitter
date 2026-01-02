@@ -12,6 +12,7 @@
 #include <boost/property_tree/ini_parser.hpp>
 
 #define BINS(X, Y) ((X[Y][1] - X[Y][0]) / 8.)
+//#define BINS(X, Y) ((X[Y][1] - X[Y][0]) / 2.)
 
 using namespace std;
 
@@ -33,12 +34,16 @@ static double *RSM_FRAC[] = {RSM_FRAC_PP, RSM_FRAC_PL};
 static double *RSM_MASS[] = {RSM_MASS_PP, RSM_MASS_PL};
 static double *RSM_TAU[] = {RSM_TAU_PP, RSM_TAU_PL};
 
+static const TString POTS_PP[] = {"pp", "epelbaum", "norfolk"};
+static const int POTVARS_PP[] = {112, 122, 212, 222};
+
 static const TString SYSTEM_STR[] = {"PP", "PL"};
 static const TString CHARGE_STR[] = {"pp", "apap", "combined"};
 
 static const int fmr_ent = 3;
 
-static const vector<TString> str_mult_bins {"0.0-10.0", "10.0-50.0", "50.0-100.0"};
+//static const vector<TString> str_mult_bins {"0.0-10.0", "10.0-50.0", "50.0-100.0"};
+static const vector<TString> str_mult_bins {"0.0-100.0"};
 
 static const vector<TString> str_mt_bins_pl {"1.08-1.26", "1.26-1.32", "1.32-1.44", "1.44-1.65", "1.65-1.9", "1.9-4.5"};
 //static const vector<TString> str_mt_bins_pl {"1.02-1.14", "1.14-1.2", "1.2-1.26", "1.26-1.38", "1.38-1.56", "1.56-1.86", "1.86-6"};
@@ -47,6 +52,7 @@ static const vector<TString> str_mt_bins_pp {"1.02-1.14", "1.14-1.2", "1.2-1.26"
 
 static double
 FEMTO_RANGE_PP[fmr_ent][3] = {
+    //{0, 400, BINS(FEMTO_RANGE_PP, 0)},
     {0, 280, BINS(FEMTO_RANGE_PP, 0)},
     {0, 240, BINS(FEMTO_RANGE_PP, 1)},
     {0, 320, BINS(FEMTO_RANGE_PP, 2)},
@@ -63,6 +69,7 @@ static double (*FEMTO_RANGE[])[fmr_ent][3] = {&FEMTO_RANGE_PP, &FEMTO_RANGE_PL};
 
 static double
 FIT_RANGE[][3] = {
+    //{0, 500},
     {0, 400},
     {0, 360},
     {0, 440},
@@ -100,6 +107,7 @@ VAR {
     int rsm    = 0;
     int mt     = 2;
     int mult   = 0;
+    int potvar = 0;
     int lam    = 0;
     int fmr    = 0;
     int fr     = 0;
@@ -107,6 +115,7 @@ VAR {
     int smear  = 0;
     int frac   = 0;
     int mass   = 0;
+    int pot    = 0;
     int normal = 0;
 
     bool prefit = false;
@@ -141,13 +150,14 @@ inline void
 set_vars(int argc, char *argv[], VAR *var)
 {
     if (argc > 1) read_config_file(argc, argv, var);
-    if (argc > 2) var->system = atoi(argv[2]);
+    if (argc > 2) var->system = atoi(argv[2]); //0
     if (argc > 3) var->charge = atoi(argv[3]);
     if (argc > 4) var->sample = atoi(argv[4]);
     if (argc > 5) var->stat   = atoi(argv[5]);
     if (argc > 6) var->rsm    = atoi(argv[6]);
     if (argc > 7) var->mt     = atoi(argv[7]);
     if (argc > 8) var->mult   = atoi(argv[8]);
+	if (argc > 9) var->potvar = atoi(argv[9]);
 
     if (!var->stat)
     {
@@ -163,15 +173,18 @@ set_vars(int argc, char *argv[], VAR *var)
 	    var->smear = 0;
 	    var->frac  = random->Integer(3);
 	    var->mass  = random->Integer(3);
+	    //var->pot   = random->Integer(3);
+	    //var->potvar= random->Integer(4);
 	}
 
-	if (argc >  9) var->lam   = atoi(argv[9]);
-	if (argc > 10) var->fmr   = atoi(argv[10]);
-	if (argc > 11) var->fr    = atoi(argv[11]);
-	if (argc > 12) var->bsl   = atoi(argv[12]);
-	if (argc > 13) var->smear = atoi(argv[13]);
-	if (argc > 14) var->frac  = atoi(argv[14]);
-	if (argc > 15) var->mass  = atoi(argv[17]);
+	if (argc > 10) var->lam   = atoi(argv[10]);
+	if (argc > 11) var->fmr   = atoi(argv[11]);
+	if (argc > 12) var->fr    = atoi(argv[12]);
+	if (argc > 13) var->bsl   = atoi(argv[13]);
+	if (argc > 14) var->smear = atoi(argv[14]);
+	if (argc > 15) var->frac  = atoi(argv[15]);
+	if (argc > 16) var->mass  = atoi(argv[16]);
+	if (argc > 17) var->pot   = atoi(argv[17]);
 
 	var->prefit   = static_cast<bool>(atoi(var->get("settings.prefit").data()));
 	var->save_tw  = static_cast<bool>(atoi(var->get("settings.save_totalwave").data()));
@@ -190,6 +203,7 @@ VAR_QA {
     TH1F *smear = new TH1F("qa_smear",	"qa_smear",  10, -0.5, 9.5);
     TH1F *frac  = new TH1F("qa_frac",	"qa_frac",   10, -0.5, 9.5);
     TH1F *mass  = new TH1F("qa_mass",	"qa_mass",   10, -0.5, 9.5);
+    TH1F *pot   = new TH1F("qa_pot",	"qa_pot",    10, -0.5, 9.5);
 
     VAR_QA(VAR *var)
     {
@@ -200,6 +214,7 @@ VAR_QA {
 	smear->Fill(var->smear);
 	frac->Fill(var->frac);
 	mass->Fill(var->mass);
+	pot->Fill(var->pot);
     }
 
     ~VAR_QA()
@@ -211,6 +226,7 @@ VAR_QA {
 	delete smear;
 	delete frac;
 	delete mass;
+	delete pot;
     }
 } VAR_QA;
 
